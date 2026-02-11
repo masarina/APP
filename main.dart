@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'dart:math';
+import 'package:flutter/scheduler.dart';
 
 // ==============================================================
 // ⏱️ 非同期 & 環境情報サービス
@@ -102,10 +104,10 @@ class ComponentsService {
 late ScheduleMaking Mode_Init; // 最初のモード
 late ScheduleMaking Mode_HomeInit; // ホーム画面モード
 late ScheduleMaking Mode_Home; // ホーム画面モード
+late ScheduleMaking Mode_GameStoryMovie; // ゲームストーリーの再生モード
 late ScheduleMaking Mode_GameInit; // ゲームの初期化モード
 late ScheduleMaking Mode_Game; // ゲームの初期化モード
-late ScheduleMaking Mode_GameStoryMovie; // ゲームストーリーの再生モード
-late ScheduleMaking Mode_GameOver; // ゲーム遊びモード
+late ScheduleMaking Mode_GameOver; // ゲームオーバー画面モード
 
 
 // ==============================================================
@@ -148,15 +150,60 @@ final world = WorldPool();
 // 🎨 ObjectManager（Python感覚）
 // ==============================================================
 class ObjectManager {
-  
-  // オブジェクトを動かすメソッド
+
+  // ==============================
+  // 絶対座標へ移動（上書き型）
+  // ==============================
+  static void toSetPosition(
+    WorldObject obj,        // 例: world.objects["顔の目"]!
+    Offset position,        // 例: const Offset(100, 200)
+  ) {
+    obj.position = position;
+  }
+
+  // ==============================
+  // 相対移動（現在位置に足し算）
+  // ==============================
   static void toMove(
-    WorldObject obj, {
-    required Offset moveXY,
-  }) {
+    WorldObject obj,        // 例: world.objects["顔の輪郭"]!
+    Offset moveXY,          // 例: const Offset(5, 0) → 右に5px移動
+                            //      const Offset(0, -3) → 上に3px移動
+  ) {
     obj.position += moveXY;
   }
+
+  // ==============================
+  // 任意角度に設定（度で指定）
+  // ==============================
+  static void toSetRotationDeg(
+    WorldObject obj,        // 例: world.objects["空想アノアノ羽"]!
+    double degree,          // 例: 180 → 180度回転
+                            //      90  → 90度回転
+                            //      45  → 45度回転
+  ) {
+    final rad = degree * pi / 180; // 度 → ラジアン変換
+
+    if (obj is ImageObject) {
+      obj.rotation = rad;
+    }
+    else if (obj is GifObject) {
+      obj.rotation = rad;
+    }
+  }
+
+  // ==============================
+  // 別オブジェクトの座標をコピー
+  // "顔の目" の座標を変更したい場合。
+  // ==============================
+  static void toCopyPosition(
+    WorldObject targetObj,   // 例: world.objects["顔の目"]!
+    WorldObject sourceObj,   // 例: world.objects["顔の輪郭"]!
+  ) {
+    targetObj.position = sourceObj.position;
+  }
+
 }
+
 
 
 // ==============================================================
@@ -317,15 +364,18 @@ class ObjectCreator {
     required String objectName,
     required List<String> assetPaths,
     required Offset position,
-    required int changeTick,
     required double width,
     required double height,
+    double rotation = 0.0, // ← 追加
+    bool enableCollision = false,
   }) {
     final gif = GifObject(
       position: position,
       assetPaths: assetPaths,
       width: width,
       height: height,
+      rotation: rotation,         // ← 渡す
+      enableCollision: enableCollision,
     );
     world.objects[objectName] = gif;
   }
@@ -408,7 +458,7 @@ class HomeInitPlayer extends SuperPlayer {
         ), 
       width: 83.5,
       height: 65,
-      rotation: 180.0,
+      rotation: pi. // pi → 180。0,
     );
 
     // 下中央に「スタートボタン」
@@ -450,29 +500,25 @@ class HomePlayer extends SuperPlayer {
 // ゲームストーリーを再生するPlayer
 class GameStoryPlayer extends SuperPlayer {
   // class変数
-  static bool flag_story_end = false;
-
-  // フラグ群
-  bool flag_mokomoko_step_end = false;
-  bool flag_kubihuri_end = false;
-  bool flag_ikigomi_end = false;
+  bool flag_story_end = false;
 
   // 1秒経過フラグ
   int? end_time = null;
+  int wait_time = 1;
 
-  // アニメーションフィルム
-  final screenSize = SystemEnvService.screenSize;
-  double bias_x = (screenSize.width / 2) + 70;
-  double bias_y = (screenSize.height / 2) + 70;
-  List<List<dynamic>> animation_film_2dlist = [
-      [world.objects["ちいさいまる"], Offset(10, 20)],
-      [world.objects["ちいさいまる"], Offset(10, 20)],
-      [world.objects["ちいさいまる"], Offset(10, 20)],
-    ];
+  // 空のアニメーションフィルムを用意。
+  Size screenSize = SystemEnvService.screenSize;
+  late double bias_x; // late → 意味:「後で代入するので空の初期化だけど許してほしい」
+  late double bias_y;
+  late List<List<List<dynamic>>> animation_film_3dlist;
 
   // __init__(self)に同じ
   @override
   void init() {
+
+    // バイアス座標の作成
+    this.bias_x = (screenSize.width / 2) + 75;
+    this.bias_y = (screenSize.height / 2) + 70;
 
     // 使用するオブジェクトの用意
     ObjectCreator.createImage(
@@ -482,6 +528,76 @@ class GameStoryPlayer extends SuperPlayer {
       width: 70,
       height: 70,
     );
+    ObjectCreator.createImage(
+      objectName: "ちいさいもこもこ",
+      assetPath: "assets/images/mokomoko_syou.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+    ObjectCreator.createImage(
+      objectName: "おおきいもこもこ",
+      assetPath: "assets/images/mokomoko_dai.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+    ObjectCreator.createImage(
+      objectName: "空想アノアノ右目",
+      assetPath: "assets/images/nikkori.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+    ObjectCreator.createImage(
+      objectName: "空想アノアノ左目",
+      assetPath: "assets/images/nikkori.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+    ObjectCreator.createImage(
+      objectName: "空想アノアノ口",
+      assetPath: "assets/images/nikkori.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+      rotation: pi, // pi → 180。
+    );
+    ObjectCreator.createGIF(
+      objectName: "空想アノアノ羽",
+      assetPaths: ["assets/images/hane_1.png","assets/images/hane_2.png"],
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+    ObjectCreator.createImage(
+      objectName: "空想アノアノ両目_怒",
+      assetPath: "assets/images/me_sikame.png",
+      position: Offset(-10000, -10000),
+      width: 70,
+      height: 70,
+    );
+
+    // アニメーションフィルムの作成
+    // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
+    this.animation_film_3dlist = [
+        [[world.objects["ちいさいまる"], Offset(this.bias_x, this.bias_y), 1, ObjectManager.toSetPosition]],
+        [[world.objects["ちいさいもこもこ"], Offset(this.bias_x + 10, this.bias_y + 12), 1, ObjectManager.toSetPosition]],
+        [[world.objects["おおきいもこもこ"], Offset(this.bias_x + 20, this.bias_y + 70), 1, ObjectManager.toSetPosition]],
+        [
+         [world.objects["空想アノアノ右目"], Offset(this.bias_x + 15, this.bias_y + 60), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["空想アノアノ右目"], Offset(this.bias_x + 25, this.bias_y + 60), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["空想アノアノ口"], Offset(this.bias_x + 20, this.bias_y + 65), 1, ObjectManager.toSetPosition]
+        ],
+        [[world.objects["空想アノアノ羽"], Offset(this.bias_x + 35, this.bias_y + 40), 3, ObjectManager.toSetPosition]],
+        [
+         [world.objects["空想アノアノ両目_怒"], world.objects["空想アノアノ右目"], 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["空想アノアノ両目_怒"], Offset(5, 0), 0, ObjectManager.toMove], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["空想アノアノ右目"], Offset(-1000, -1000), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["空想アノアノ右目"], Offset(-1000, -1000), 1, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
+        ],
+      ];
 
   }
   
@@ -498,7 +614,7 @@ class GameStoryPlayer extends SuperPlayer {
       // 現在時刻の取得
       int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 「 ~/ 1000」→秒に変換してる
       // 現在時刻から1秒後を取得
-      end_time = now_time + 1; // スタートから1秒後を計算
+      end_time = now_time + this.wait_time; // スタートから1秒後を計算
     }
 
     // 1秒経過チェック
@@ -511,12 +627,29 @@ class GameStoryPlayer extends SuperPlayer {
       // end_timeをnullに戻す。
       this.end_time = null;
 
-      // もこもこ一つ目を表示
+      // アニメーションフィルムを一つ読み込んで、オブジェクトをその場所へ移動。
+      final frame = animation_film_3dlist.removeAt(0); // 読み取り（抜き取り）
 
+      // 抜き取ったフレーム処理。
+      for (final cell in frame){
+        // cellを解答
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
 
+        func(     // 関数の実行 (移動やローテーション等。)
+            obj, // オブジェクト 
+            value  // 代入値を割り当て
+          );         
+        this.wait_time = cell[2]; // 待機時間の上書き
+      }
+
+      // アニメーションフィルムが空になったのならば、アニメーションエンドフラグをtrueにする。
+      if (animation_film_3dlist.isEmpty)
+      {
+        this.flag_story_end = true;
+      }
     }
-
-
   }
 }
 
@@ -583,17 +716,17 @@ class FaceMovingUpPlayer extends SuperPlayer {
 
     final face = world.objects["顔の輪郭"];
     if (face != null) {
-      ObjectManager.toMove(
+      ObjectManager.toSetPosition(
         face,
-        moveXY: const Offset(1, 0),
+        const Offset(1, 0),
       );
     }
 
     final eye = world.objects["顔の目"];
     if (eye != null) {
-      ObjectManager.toMove(
+      ObjectManager.toSetPosition(
         eye,
-        moveXY: const Offset(1, 0),
+        const Offset(1, 0),
       );
     }
 
@@ -645,17 +778,18 @@ class MyApp extends StatefulWidget {
 
 
 // ✅ こっちが「状態（変数）と処理」を持つ本体
-// ・タイマー
+// ・Ticker（Flutterの描画フレームと同期するゲームループ）
 // ・スケジュール
-// ・update()（ゲームループ）
+// ・update()（ゲームロジック）
 // ・build()（画面を作る関数）
 // を全部ここに置いてる
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp>
+    with SingleTickerProviderStateMixin {
   // ✅ これは「どのスケジュールを動かすフェーズか」の状態
   String schedule_status = "None";
 
-  // ✅ 毎フレーム update() を呼ぶためのタイマー
-  late Timer _timer;
+  // ✅ 毎フレーム update() を呼ぶためのTicker
+  late Ticker _ticker;
 
   // =============================================================
   // initState()：この画面が“最初に作られた瞬間”に1回だけ呼ばれる
@@ -689,7 +823,7 @@ class _MyAppState extends State<MyApp> {
       ],
     );
 
-    // ゲームの初期化モード
+    // ゲームのストーリーを再生するモード。
     Mode_GameStoryMovie = ScheduleMaking(
       [
         world.gameStoryPlayer
@@ -710,12 +844,17 @@ class _MyAppState extends State<MyApp> {
       ],
     );
 
-    // ✅ n秒ごとにupdate()を呼び出して、ゲームループ。
-    // 16msごと（だいたい60fps）に update() を呼ぶ
-    _timer = Timer.periodic(
-      const Duration(milliseconds: 16),
-      (_) => update(),
-    );
+    // ✅ Flutterの描画フレームに同期して update() を呼び出す
+    // Tickerは「画面のリフレッシュタイミング」と同じ周期で動く
+    // 端末が60fpsなら1秒間に約60回 update() が呼ばれる
+    // 120fps端末なら約120回呼ばれる（自動調整）
+    // ※ Timerのような固定16ms待機ではない
+    _ticker = createTicker((elapsed) {
+      update();
+    });
+
+    // ✅ ゲームループ開始
+    _ticker.start();
   }
 
   void update() {
@@ -764,18 +903,16 @@ class _MyAppState extends State<MyApp> {
       this.schedule_status = "ゲームモード";
 
       // もしゲームストーリーの視聴がまだならば、ゲームストーリー再生モードへ。
-      if (world.GameStoryMoviePlayer.flag_story_end == false){
+      if (world.gameStoryPlayer.flag_story_end == false){
         next_schedule = Mode_GameStoryMovie;
         this.schedule_status = "ゲームストーリーモード";
       }
-
-      this.schedule_status = "ゲームモード";
     }
 
     // ゲームストーリーが再生し終わった。
     else if (
           this.schedule_status == "ゲームストーリーモード" &&
-          world.GameStoryMoviePlayer.flag_story_end == true
+          world.gameStoryPlayer.flag_story_end == true
         ) {
 
       // ゲームモードに遷移。
@@ -867,8 +1004,8 @@ class _MyAppState extends State<MyApp> {
   // dispose()：この画面が破棄されるとき（アプリ終了/画面移動など）に呼ばれる
   @override
   void dispose() {
-    // ✅ タイマーを止めないと、画面が無くなっても update() が回り続けて事故る
-    _timer.cancel();
+    // ✅ Tickerを破棄しないと、画面破棄後もフレームコールが続いて事故る
+    _ticker.dispose();
     super.dispose();
   }
 }
@@ -998,9 +1135,9 @@ void main() {
 // 例：
 // for (final obj in world.objects) {
 //   if (obj is CircleObject) {
-//     ObjectManager.toMove(
+//     ObjectManager.toSetPosition(
 //       obj,
-//       moveXY: const Offset(10, 0),
+//       const Offset(10, 0),
 //     );
 //   }
 // }
