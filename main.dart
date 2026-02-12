@@ -311,9 +311,12 @@ class ObjectManager {
 
     // 進捗率をパーセントで算出
     // (比率算で表すと→（何秒経過した:終了時刻 = 現在ジャンプn%完了:ジャンプ100パーセント）)
-    final progress = (
+    final _progress = (
         elapsedSec / durationSec // (時間経過) - (ジャンプ終了時刻)　
       );
+
+    // フレーム落ちで着地地点よりマイナスの値が出る可能性があるので、念のためクランプ。
+    final progress = _progress.clamp(0.0, 1.0);
 
     // 今この瞬間、地面から何ピクセル上にいるかを算出
     final height = (
