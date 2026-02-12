@@ -12,16 +12,17 @@ import 'package:flutter/scheduler.dart';
 // ------------------------------------
 // ジャンプ内部データ保持クラス
 class _JumpData {
-    double landingY; // 着地とするY座標
-    int startTimeMs; // ジャンプ開始時刻（更新される）
-    int jumpCount; // 現在のジャンプ回数
-    _JumpData(
-    {
-      required this.landingY,
-      required this.startTimeMs,
-      required this.jumpCount,
-    }
-  );
+  double startY;      // ← ジャンプ開始地点（今いる高さ）
+  double landingY;    // ← 着地地点
+  int startTimeMs;
+  int jumpCount;
+
+  _JumpData({
+    required this.startY,
+    required this.landingY,
+    required this.startTimeMs,
+    required this.jumpCount,
+  });
 }
 
 
@@ -273,10 +274,12 @@ class ObjectManager {
 
       // 新規ジャンプ開始（オブジェクトの登録）
       _jumpingObjects[obj] = _JumpData(
+        startY: obj.position.dy,  // ← 今いる高さを保存！
         landingY: landingY,   // 外部から指定された着地Yを保存
         startTimeMs: now,     // ジャンプ開始時刻
         jumpCount: 1,         // ジャンプ回数1回目
       );
+
 
     // 登録されていた。
     } else {
@@ -284,6 +287,9 @@ class ObjectManager {
       // 登録されていたけど、まだジャンプ可能なら、
       // リスト登録状態を更新
       if (_jumpingObjects[obj]!.jumpCount < maxJumpCount) {
+        _jumpingObjects[obj]!.startY = obj.position.dy; // ジャンプ開始Y座標を、
+                                                        //今回ダブルジャンプ開始地点の
+                                                        //Y座標で上書き
         _jumpingObjects[obj]!.landingY = landingY; // 念のため着地Yも更新可能に
         _jumpingObjects[obj]!.startTimeMs = now;   // 再ジャンプなので時刻更新
         _jumpingObjects[obj]!.jumpCount += 1;      // ジャンプ回数増加
@@ -309,7 +315,7 @@ class ObjectManager {
         elapsedSec / durationSec // (時間経過) - (ジャンプ終了時刻)　
       );
 
-    // ジャンプ関数 f(x)
+    // 今この瞬間、地面から何ピクセル上にいるかを算出
     final height = (
         4 *              // progress*(1-progress) の最大値は 0.25 なので、
                          // 4倍して「最大値を 1」に正規化することで、
@@ -318,8 +324,9 @@ class ObjectManager {
         progress * (1 - progress) // 山の形を作る。なお、progressが0.5の時、山の頂点となる。
       );
 
-    // 新しいY座標（上方向へ跳ぶ）
-    final newY = data.landingY - height;
+    // 新しいY座標（地面Yから、今の高さぶん上に移動する）
+    final newY = data.startY - height;
+
 
 
     // ------------------------------------------------------------
