@@ -128,6 +128,14 @@ class ComponentsService {
 
 // ==============================================================
 // アニメーションフィルムサービス
+// 【フィルムを作成したら、そのクラスに必ず
+// 　以下のキャッシュをメンバ変数に実装してください。】
+// String frame_result = "ok";
+// late List<dynamic> list_2d;
+// int wait_time = 1;
+// int? end_time = null;
+// late List<List<List<dynamic>>> animation_film_3dlist;
+// bool flag_all_film_finished = false;
 // ==============================================================
 class AnimationFilmService {
 
