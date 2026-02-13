@@ -12,18 +12,23 @@ import 'package:flutter/scheduler.dart';
 // ------------------------------------
 // ジャンプ内部データ保持クラス
 class _JumpData {
-  double startY;      // ← ジャンプ開始地点（今いる高さ）
-  double landingY;    // ← 着地地点
+  double startX;
+  double startY;
+  double landingX;
+  double landingY;
   int startTimeMs;
   int jumpCount;
 
   _JumpData({
+    required this.startX,
     required this.startY,
+    required this.landingX,
     required this.landingY,
     required this.startTimeMs,
     required this.jumpCount,
   });
 }
+
 
 
 // ==============================================================
@@ -122,6 +127,87 @@ class ComponentsService {
 
 
 // ==============================================================
+// アニメーションフィルムサービス
+// ==============================================================
+class AnimationFilmService {
+
+  // ============================================================
+  // アニメーションフィルムを時間管理込みで実行するメソッド
+  // ============================================================
+  static
+  (
+    String newFrameResult,
+    List<List<List<dynamic>>> newAnimationFilm3DList,
+    List<dynamic> newList2D,
+    int newWaitTime,
+    int? newEndTime,
+    bool isFilmEmpty
+  )
+  runAnimationFilm(
+
+    // 現在の状態を受け取る
+    String frameResult,
+    List<List<List<dynamic>>> animationFilm3DList,
+    List<dynamic> list2d,
+    int waitTime,
+    int? endTime,
+
+  ) {
+
+    // ============================================================
+    // 待機時間秒カウント開始していなければ、カウント開始。
+    // ============================================================
+    if (endTime == null){
+
+      // 現在時刻の取得
+      int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      // 現在時刻から待機時間秒後を取得
+      endTime = now_time + waitTime;
+    }
+
+    // ============================================================
+    // 待機時間秒経過チェック
+    // ============================================================
+    int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    if (endTime <= now_time) {
+
+      // end_timeをnullに戻す。
+      endTime = null;
+
+      // 前回フレームが完了していたら次を読む
+      if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
+        list2d = animationFilm3DList.removeAt(0);
+      }
+
+      frameResult = "None";
+
+      // 抜き取ったフレーム処理。
+      for (final cell in list2d) {
+
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+
+        frameResult = func(obj, value);
+        waitTime = cell[2];
+      }
+    }
+
+    return (
+      frameResult,
+      animationFilm3DList,
+      list2d,
+      waitTime,
+      endTime,
+      animationFilm3DList.isEmpty
+    );
+  }
+}
+
+
+// ==============================================================
 // 👒モードの入れ物準備
 // ==============================================================
 late ScheduleMaking Mode_Init; // 最初のモード
@@ -171,7 +257,7 @@ final world = WorldPool();
 
 // ==============================================================
 // 🎨 ObjectManager（Python感覚）
-// ==============================================================
+// ============================================================
 class ObjectManager {
   // ============================================================
   // クラス変数群
@@ -185,40 +271,52 @@ class ObjectManager {
   // 第一引数: WorldObject型
   // 第二引数: なんでもよい。
   // 引数の数: ２つ。
+  // 戻り値: ステータス文字列
   // ============================================================
 
 
   // ==============================
   // 絶対座標へ移動（上書き型）
   // ==============================
-  static void toSetPosition(
-    WorldObject obj,        // 例: world.objects["顔の目"]!
-    Offset position,        // 例: const Offset(100, 200)
+  static String toSetPosition(
+    WorldObject obj,
+    (
+      double x,
+      double y,
+    ) position,
   ) {
-    obj.position = position;
+    final (x, y) = position;
+    obj.position = Offset(x, y);
+    return "ok";
   }
 
   // ==============================
   // 相対移動（現在位置に足し算）
   // ==============================
-  static void toMove(
-    WorldObject obj,        // 例: world.objects["顔の輪郭"]!
-    Offset moveXY,          // 例: const Offset(5, 0) → 右に5px移動
-                            //      const Offset(0, -3) → 上に3px移動
+  static String toMove(
+    WorldObject obj,
+    (
+      double dx,
+      double dy,
+    ) moveXY,
   ) {
-    obj.position += moveXY;
+    final (dx, dy) = moveXY;
+    obj.position += Offset(dx, dy);
+    return "ok";
   }
 
   // ==============================
   // 任意角度に設定（度で指定）
   // ==============================
-  static void toSetRotationDeg(
-    WorldObject obj,        // 例: world.objects["空想アノアノ羽"]!
-    double degree,          // 例: 180 → 180度回転
-                            //      90  → 90度回転
-                            //      45  → 45度回転
+  static String toSetRotationDeg(
+    WorldObject obj,
+    (
+      double degree,
+    ) params,
   ) {
-    final rad = degree * pi / 180; // 度 → ラジアン変換
+    final (degree,) = params;
+
+    final rad = degree * pi / 180;
 
     if (obj is ImageObject) {
       obj.rotation = rad;
@@ -226,73 +324,77 @@ class ObjectManager {
     else if (obj is GifObject) {
       obj.rotation = rad;
     }
+
+    return "ok";
   }
 
   // ==============================
   // 別オブジェクトの座標をコピー
   // "顔の目" の座標を変更したい場合。
   // ==============================
-  static void toCopyPosition(
-    WorldObject targetObj,   // 例: world.objects["顔の目"]!
-    WorldObject sourceObj,   // 例: world.objects["顔の輪郭"]!
+  static String toCopyPosition(
+    WorldObject targetObj,
+    (
+      WorldObject sourceObj,
+    ) params,
   ) {
+    final (sourceObj,) = params;
     targetObj.position = sourceObj.position;
+    return "ok";
   }
 
   // ============================================================
   // ジャンプメソッド（多段ジャンプ拡張対応設計）
-  // ※ 着地Y座標を引数で指定
-  // ※ 指定された landingY 以上（下方向）になったらジャンプ終了
+  // ※ 任意の座標（targetX, targetY）へジャンプ
+  // ※ 指定された target座標 に到達したらジャンプ終了
   // ============================================================
-  static void toJump(
-    WorldObject obj,                 // ジャンプさせたいオブジェクト
-    (
-      double jumpPower,              // 最大ジャンプ量(px)
-      double durationSec,            // ジャンプ全体時間(秒)
-      int maxJumpCount,              // 最大ジャンプ回数（1=通常ジャンプ、2=二段ジャンプ）
-      double landingY                // 着地とみなすY座標
-    ) params,
-  ) {
+  static String toJump(
+      WorldObject obj,
+      (
+        double targetX, // ジャンプ先の場所座標x
+        double targetY, // ジャンプ先の場所座標y
+        double jumpPower,
+        double durationSec,
+        int maxJumpCount
+      ) params,
+    ) {
 
     // params展開
     final (
-      jumpPower, // 最大ジャンプ量
-      durationSec, // ジャンプ全体時間(秒)
-      maxJumpCount, // 最大ジャンプ回数
-      landingY // 着地とみなすY座標
+      targetX,
+      targetY,
+      jumpPower,
+      durationSec,
+      maxJumpCount
     ) = params;
 
-    // 現在時刻取得
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // ------------------------------------------------------------
     // 🟢 初回登録 または 追加ジャンプ判定
     // ------------------------------------------------------------
     
-    // リストに登録されていなければ登録。
     if (!_jumpingObjects.containsKey(obj)) {
 
-      // 新規ジャンプ開始（オブジェクトの登録）
       _jumpingObjects[obj] = _JumpData(
-        startY: obj.position.dy,  // ← 今いる高さを保存！
-        landingY: landingY,   // 外部から指定された着地Yを保存
-        startTimeMs: now,     // ジャンプ開始時刻
-        jumpCount: 1,         // ジャンプ回数1回目
+        startX: obj.position.dx,
+        startY: obj.position.dy,
+        landingX: targetX,
+        landingY: targetY,
+        startTimeMs: now,
+        jumpCount: 1,
       );
 
-
-    // 登録されていた。
     } else {
 
-      // 登録されていたけど、まだジャンプ可能なら、
-      // リスト登録状態を更新
       if (_jumpingObjects[obj]!.jumpCount < maxJumpCount) {
-        _jumpingObjects[obj]!.startY = obj.position.dy; // ジャンプ開始Y座標を、
-                                                        //今回ダブルジャンプ開始地点の
-                                                        //Y座標で上書き
-        _jumpingObjects[obj]!.landingY = landingY; // 念のため着地Yも更新可能に
-        _jumpingObjects[obj]!.startTimeMs = now;   // 再ジャンプなので時刻更新
-        _jumpingObjects[obj]!.jumpCount += 1;      // ジャンプ回数増加
+
+        _jumpingObjects[obj]!.startX = obj.position.dx;
+        _jumpingObjects[obj]!.startY = obj.position.dy;
+        _jumpingObjects[obj]!.landingX = targetX;
+        _jumpingObjects[obj]!.landingY = targetY;
+        _jumpingObjects[obj]!.startTimeMs = now;
+        _jumpingObjects[obj]!.jumpCount += 1;
       }
     }
 
@@ -301,60 +403,65 @@ class ObjectManager {
     // 🔵 ジャンプ実行
     // ------------------------------------------------------------
 
-    // オブジェクト情報をdataに格納
     final data = _jumpingObjects[obj]!;
 
-    // 経過時間を算出（秒）
     final elapsedSec = (
-        now - data.startTimeMs // （今の時刻）-（ジャンプ開始時時刻）
-        ) / 1000.0;            // ミリ秒　から　秒　に変換
+        now - data.startTimeMs
+        ) / 1000.0;
 
-    // 進捗率をパーセントで算出
-    // (比率算で表すと→（何秒経過した:終了時刻 = 現在ジャンプn%完了:ジャンプ100パーセント）)
     final _progress = (
-        elapsedSec / durationSec // (時間経過) - (ジャンプ終了時刻)　
+        elapsedSec / durationSec
       );
 
-    // フレーム落ちで着地地点よりマイナスの値が出る可能性があるので、念のためクランプ。
     final progress = _progress.clamp(0.0, 1.0);
 
-    // 今この瞬間、地面から何ピクセル上にいるかを算出
-    final height = (
-        4 *              // progress*(1-progress) の最大値は 0.25 なので、
-                         // 4倍して「最大値を 1」に正規化することで、
-                         // jumpPowerの設定値がそのままピクセル的になる。
-        jumpPower *      // ジャンプの最大高さ（この値がそのまま頂点になる。例: 120 → 120px上がる。）
-        progress * (1 - progress) // 山の形を作る。なお、progressが0.5の時、山の頂点となる。
+    // ------------------------------------------------------------
+    // 横方向移動（線形補間）
+    // ------------------------------------------------------------
+    final newX = (
+        data.startX +
+        (data.landingX - data.startX) * progress
       );
 
-    // 新しいY座標（地面Yから、今の高さぶん上に移動する）
-    final newY = data.startY - height;
+    // ------------------------------------------------------------
+    // 今この瞬間、基準線から何ピクセル上にいるかを算出
+    // ------------------------------------------------------------
 
+    final baseY = (
+        data.startY +
+        (data.landingY - data.startY) * progress
+      );
+
+    final height = (
+        4 *
+        jumpPower *
+        progress * (1 - progress)
+      );
+
+    final newY = baseY - height;
 
 
     // ------------------------------------------------------------
     // 🔴 着地判定
     // 条件：
     // ① progress が 1.0 を超えた
-    // ② または newY が landingY 以上になった（下に戻った）
     // ------------------------------------------------------------
-    // 計算後、オブジェクトの着地が、設定値の着地地点yより下回ったら、
-    if (progress >= 1.0 || newY >= data.landingY) {
+    if (progress >= 1.0) {
 
-      // オブジェクトの着地地点を、設定値着地地点yで上書き。
-      obj.position = Offset(obj.position.dx, data.landingY);
+      obj.position = Offset(data.landingX, data.landingY);
 
-      // ジャンプ終了なので、「ジャンプリスト」から削除。
       _jumpingObjects.remove(obj);
 
-      return;
+      return "ok";
     }
 
 
     // ------------------------------------------------------------
     // 🟢 ジャンプ中更新
     // ------------------------------------------------------------
-    obj.position = Offset(obj.position.dx, newY);
+    obj.position = Offset(newX, newY);
+
+    return "running";
   }
 
 }
@@ -588,14 +695,14 @@ class HomeInitPlayer extends SuperPlayer {
     double bias_x = (screenSize.width / 2) + 70;
     double bias_y = (screenSize.height / 2) + 70;
     ObjectCreator.createImage(
-      objectName: "右目",
+      objectName: "アノアノ右目",
       assetPath: "assets/images/nikkori.png",
       position: Offset(bias_x, bias_y), // 左上ぴったり
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
-      objectName: "左目",
+      objectName: "アノアノ左目",
       assetPath: "assets/images/nikkori.png",
       position: Offset(
           bias_x - 3, 
@@ -605,7 +712,7 @@ class HomeInitPlayer extends SuperPlayer {
       height: 70,
     );
     ObjectCreator.createImage(
-      objectName: "口",
+      objectName: "アノアノ口",
       assetPath: "assets/images/nikkori.png",
       position: Offset(
           bias_x - 20, 
@@ -613,7 +720,19 @@ class HomeInitPlayer extends SuperPlayer {
         ), 
       width: 83.5,
       height: 65,
-      rotation: pi. // pi → 180。0,
+      rotation: pi, // pi → 180。0,
+    );
+    ObjectCreator.createImage(
+      objectName: "アノアノ輪郭",
+      assetPath: "assets/images/kao_rinnkaku_1.png",
+      position: Offset(
+          bias_x - 20, 
+          bias_y + 20
+        ), 
+      width: 83.5,
+      height: 65,
+      rotation: pi, // pi → 180。0,
+      enableCollision: true,
     );
 
     // 下中央に「スタートボタン」
@@ -656,15 +775,18 @@ class HomePlayer extends SuperPlayer {
 class GameStoryPlayer extends SuperPlayer {
   // class変数
   bool flag_story_end = false;
+  double hidden_xy = -10000;
 
-  // 1秒経過フラグ
-  int? end_time = null;
-  int wait_time = 1;
-
-  // 空のアニメーションフィルムを用意。
+  // 座標管理変数
   Size screenSize = SystemEnvService.screenSize;
   late double bias_x; // late → 意味:「後で代入するので空の初期化だけど許してほしい」
   late double bias_y;
+
+  // フィルム再生用キャッシュ
+  String frame_result = "ok";
+  late List<dynamic> list_2d;
+  int wait_time = 1;
+  int? end_time = null;
   late List<List<List<dynamic>>> animation_film_3dlist;
 
   // __init__(self)に同じ
@@ -679,42 +801,42 @@ class GameStoryPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "ちいさいまる",
       assetPath: "assets/images/maru_tiisai.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
       objectName: "ちいさいもこもこ",
       assetPath: "assets/images/mokomoko_syou.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
       objectName: "おおきいもこもこ",
       assetPath: "assets/images/mokomoko_dai.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ右目",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ左目",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ口",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
       rotation: pi, // pi → 180。
@@ -722,36 +844,73 @@ class GameStoryPlayer extends SuperPlayer {
     ObjectCreator.createGIF(
       objectName: "空想アノアノ羽",
       assetPaths: ["assets/images/hane_1.png","assets/images/hane_2.png"],
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
     ObjectCreator.createImage(
-      objectName: "空想アノアノ両目_怒",
+      objectName: "アノアノ両目_怒",
       assetPath: "assets/images/me_sikame.png",
-      position: Offset(-10000, -10000),
+      position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
     );
 
     // アニメーションフィルムの作成
+    int jump_height = 8;
+    double jump_time = 0.3;
+
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
-        [[world.objects["ちいさいまる"], Offset(this.bias_x, this.bias_y), 1, ObjectManager.toSetPosition]],
-        [[world.objects["ちいさいもこもこ"], Offset(this.bias_x + 10, this.bias_y + 12), 1, ObjectManager.toSetPosition]],
-        [[world.objects["おおきいもこもこ"], Offset(this.bias_x + 20, this.bias_y + 70), 1, ObjectManager.toSetPosition]],
-        [
-         [world.objects["空想アノアノ右目"], Offset(this.bias_x + 15, this.bias_y + 60), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
-         [world.objects["空想アノアノ右目"], Offset(this.bias_x + 25, this.bias_y + 60), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
-         [world.objects["空想アノアノ口"], Offset(this.bias_x + 20, this.bias_y + 65), 1, ObjectManager.toSetPosition]
-        ],
-        [[world.objects["空想アノアノ羽"], Offset(this.bias_x + 35, this.bias_y + 40), 3, ObjectManager.toSetPosition]],
-        [
-         [world.objects["空想アノアノ両目_怒"], world.objects["空想アノアノ右目"], 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
-         [world.objects["空想アノアノ両目_怒"], Offset(5, 0), 0, ObjectManager.toMove], // 時間指定意味ないが、気休めに０を代入。
-         [world.objects["空想アノアノ右目"], Offset(-1000, -1000), 0, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
-         [world.objects["空想アノアノ右目"], Offset(-1000, -1000), 1, ObjectManager.toSetPosition], // 時間指定意味ないが、気休めに０を代入。
-        ],
+        // 空想もこもこ表示
+        [[world.objects["ちいさいまる"], (this.bias_x, this.bias_y), 1, ObjectManager.toSetPosition]],
+        [[world.objects["ちいさいもこもこ"], (this.bias_x + 10, this.bias_y + 12), 1, ObjectManager.toSetPosition]],
+        [[world.objects["おおきいもこもこ"], (this.bias_x + 20, this.bias_y + 70), 1, ObjectManager.toSetPosition]],
+        
+        // 空想アノアノの出現
+        [[world.objects["空想アノアノ右目"], (this.bias_x + 15, this.bias_y + 60), 0, ObjectManager.toSetPosition], 
+         [world.objects["空想アノアノ右目"], (this.bias_x + 25, this.bias_y + 60), 0,ObjectManager.toSetPosition],
+         [world.objects["空想アノアノ口"], (this.bias_x + 20, this.bias_y + 65), 1, ObjectManager.toSetPosition]],
+        [[world.objects["空想アノアノ羽"], (this.bias_x + 35, this.bias_y + 40), 3, ObjectManager.toSetPosition]],
+        
+        // 現実アノアノが本気の顔になる
+        [[world.objects["アノアノ両目_怒"], world.objects["アノアノ右目"], 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["アノアノ両目_怒"], (5, 0), 0, ObjectManager.toMove], // 時間指定意味ないが、気休めに０を代入。
+         [world.objects["アノアノ右目"], (-1000, -1000), 0, ObjectManager.toSetPosition], 
+         [world.objects["アノアノ左目"], (-1000, -1000), 1, ObjectManager.toSetPosition]],  
+        
+        // 現実アノアノが高ぶるいする（ちょっと2回ジャンプする。）
+        [[world.objects["アノアノ両目_怒"],
+          (
+            world.objects["アノアノ両目_怒"]!.position.dx, // ジャンプ先x座標
+            world.objects["アノアノ両目_怒"]!.position.dy, // ジャンプ先y座標
+            jump_height,
+            jump_time,
+            1
+          ),
+          0,
+          ObjectManager.toJump],
+         [world.objects["アノアノ口"],
+          (
+            world.objects["アノアノ口"]!.position.dx, // ジャンプ先x座標
+            world.objects["アノアノ口"]!.position.dy, // ジャンプ先y座標
+            jump_height,
+            jump_time,
+            1
+          ),
+          0,
+          ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"],
+          (
+            world.objects["アノアノ輪郭"]!.position.dx, // ジャンプ先x座標
+            world.objects["アノアノ輪郭"]!.position.dy, // ジャンプ先y座標
+            jump_height,
+            jump_time,
+            1
+          ),
+          0,
+          ObjectManager.toJump]
+        ]
       ];
 
   }
@@ -762,132 +921,108 @@ class GameStoryPlayer extends SuperPlayer {
     // ============================================
     // ゲームストーリーの再生開始。
     // ============================================
-
-    // １秒カウント開始していなければ、カウント開始。
-    if (this.end_time == null){
-      
-      // 現在時刻の取得
-      int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 「 ~/ 1000」→秒に変換してる
-
-      // 現在時刻から1秒後を取得
-      end_time = now_time + this.wait_time; // スタートから1秒後を計算
-    }
-
-    // 1秒経過チェック
-    int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000; 
-    if (this.end_time! <= now_time) {
-      // ============================================
-      // 1秒経過した
-      // ============================================
-
-      // end_timeをnullに戻す。
-      this.end_time = null;
-
-      // アニメーションフィルムを一つ読み込んで、オブジェクトをその場所へ移動。
-      final frame = animation_film_3dlist.removeAt(0); // 読み取り（抜き取り）
-
-      // 抜き取ったフレーム処理。
-      for (final cell in frame){
-        // cellを解答
-        final Function func = cell[3];
-        final WorldObject obj = cell[0];
-        final dynamic value = cell[1];
-
-        func(     // 関数の実行 (移動やローテーション等。)
-            obj, // オブジェクト 
-            value  // 代入値を割り当て
-          );         
-        this.wait_time = cell[2]; // 待機時間の上書き
-      }
-
-      // アニメーションフィルムが空になったのならば、アニメーションエンドフラグをtrueにする。
-      if (animation_film_3dlist.isEmpty)
-      {
-        this.flag_story_end = true;
-      }
-    }
+    final result = AnimationFilmService.runAnimationFilm(
+      this.frame_result,
+      this.animation_film_3dlist,
+      this.list_2d,
+      this.wait_time,
+      this.end_time,
+    );
+    this.frame_result = result.$1;
+    this.animation_film_3dlist = result.$2;
+    this.list_2d = result.$3;
+    this.wait_time = result.$4;
+    this.end_time = result.$5;
+    this.flag_story_end = result.$6;
   }
 }
 
 
 // ゲームオブジェクトをリセット地点に置くプレイヤー。 
 class GameInitPlayer extends SuperPlayer {
+  // クラス変数
+  final Offset hiddenOffset = const Offset(-10000, -10000);
+  final Offset anoanoBiasOffset = const Offset(200, 500);
+
+  // フィルム再生用キャッシュ
+  String frame_result = "ok";
+  late List<dynamic> list_2d;
+  int wait_time = 1;
+  int? end_time = null;
+  late List<List<List<dynamic>>> animation_film_3dlist;
+  bool flag_all_film_finished = false;
+
   // __init__(self)に同じ
   @override
   void init() {
-    // 特になし
+    // アニメーションフィルムの作成
+    // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
+    this.animation_film_3dlist = [
+
+        // 空想隠す。
+        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
+         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
+         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
+         [world.objects["空想アノアノ右目"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
+         [world.objects["空想アノアノ口"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
+         [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove]],
+
+        // 既に存在するゲームオブジェクトを初期位置に移動させる。
+        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump],
+         [world.objects["アノアノ口"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump]],
+      ];  
   }
   // 非同期サービスの開始
   
-  // 最初に用意するオブジェクトと、それらの配置。
   @override
   void mainScript() 
   {
-
-    // 背景（画面ぴったり）
-    final screenSize = SystemEnvService.screenSize;
-    ObjectCreator.createImage(
-      objectName: "背景",
-      assetPath: "assets/images/kami_free.png",
-      position: Offset.zero, // 左上ぴったり
-      width: screenSize.width,
-      height: screenSize.height,
-    );
-
-    // 顔の輪郭
+    // ============================================
+    // 邪魔オブジェクトの生成（見えないところに。）
+    // ============================================
+    // 建物
     ObjectCreator.createGIF(
-      objectName: "顔の輪郭",
+      objectName: "建物",
       assetPaths: [
-          "assets/images/kao_rinnkaku_1.png",
-          "assets/images/kao_rinnkaku_2.png",
+          "assets/images/tatemono_1.png",
+          "assets/images/tatemono_2.png",
         ],
-      position: const Offset(50, 100),
-      changeTick: 30,
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
       width: 500,
       height: 1000,
+      enableCollision: true,
     );
-
-    // 顔の目
-    ObjectCreator.createImage(
-      objectName: "顔の目",
-      assetPath: "assets/images/me_sikame.png",
-      position: const Offset(50, 100),
+    // UFO
+    ObjectCreator.createGIF(
+      objectName: "UFO",
+      assetPaths: [
+          "assets/images/ufo_1.png",
+          "assets/images/ufo_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
       width: 500,
       height: 1000,
+      enableCollision: true,
     );
 
+    // ============================================
+    // ゲームの初期化
+    // ============================================
+    final result = AnimationFilmService.runAnimationFilm(
+      this.frame_result,
+      this.animation_film_3dlist,
+      this.list_2d,
+      this.wait_time,
+      this.end_time,
+    );
+    this.frame_result = result.$1;
+    this.animation_film_3dlist = result.$2;
+    this.list_2d = result.$3;
+    this.wait_time = result.$4;
+    this.end_time = result.$5;
+    this.flag_all_film_finished = result.$6;
   }
-
-}
-
-// 顔を上に移動させるプレイヤー
-class FaceMovingUpPlayer extends SuperPlayer {
-  // __init__(self)に同じ
-  @override
-  void init() {
-  }
-
-  @override
-  void mainScript() {
-
-    final face = world.objects["顔の輪郭"];
-    if (face != null) {
-      ObjectManager.toSetPosition(
-        face,
-        const Offset(1, 0),
-      );
-    }
-
-    final eye = world.objects["顔の目"];
-    if (eye != null) {
-      ObjectManager.toSetPosition(
-        eye,
-        const Offset(1, 0),
-      );
-    }
-
-  }
-
 }
 
 
@@ -1054,9 +1189,9 @@ class _MyAppState extends State<MyApp>
           this.schedule_status == "ホームのスタートがクリックされました。"
         ) {
 
-      // ゲームモードに遷移。
-      next_schedule = Mode_Game;
-      this.schedule_status = "ゲームモード";
+      // ゲーム初期化モードに遷移。
+      next_schedule = Mode_GameInit;
+      this.schedule_status = "ゲーム初期化モード";
 
       // もしゲームストーリーの視聴がまだならば、ゲームストーリー再生モードへ。
       if (world.gameStoryPlayer.flag_story_end == false){
@@ -1071,6 +1206,15 @@ class _MyAppState extends State<MyApp>
           world.gameStoryPlayer.flag_story_end == true
         ) {
 
+      // ゲーム初期化モードに遷移。
+      next_schedule = Mode_GameInit;
+      this.schedule_status = "ゲーム初期化モード";
+    }
+
+    // ゲームの初期化が完了した
+    else if (
+          this.schedule_status == "ゲーム初期化モード"
+        ) {
       // ゲームモードに遷移。
       next_schedule = Mode_Game;
       this.schedule_status = "ゲームモード";
