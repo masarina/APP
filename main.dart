@@ -28,6 +28,22 @@ class _JumpData {
     required this.jumpCount,
   });
 }
+// 移動関数内部データ保持クラス
+class _MoveData {
+  double startX;
+  double startY;
+  double targetX;
+  double targetY;
+  int startTimeMs;
+
+  _MoveData({
+    required this.startX,
+    required this.startY,
+    required this.targetX,
+    required this.targetY,
+    required this.startTimeMs,
+  });
+}
 
 
 
@@ -136,6 +152,14 @@ class ComponentsService {
 // int? end_time = null;
 // late List<List<List<dynamic>>> animation_film_3dlist;
 // bool flag_all_film_finished = false;
+//
+// 【注意】
+// ・一行一行実行されます。
+// ・前の行の関数の実行が終了されていない場合、次の行は実行されません。
+//   →（ジャンプ中など。なお、複数ジャンプメソッドの場合は、
+// 　　　最後のジャンプでfunkの戻り値が"ok"になります。）
+//
+// 【例】・
 // ==============================================================
 class AnimationFilmService {
 
@@ -149,7 +173,7 @@ class AnimationFilmService {
     List<dynamic> newList2D,
     int newWaitTime,
     int? newEndTime,
-    bool isFilmEmpty
+    bool isFilmEmpty //　
   )
   runAnimationFilm(
 
@@ -258,7 +282,10 @@ class WorldPool {
   HomePlayer homePlayer = HomePlayer();
   GameInitPlayer gameInitPlayer = GameInitPlayer();
   GameStoryPlayer gameStoryPlayer = GameStoryPlayer();
-  UserOpetationsPlayer userOpetationsPlayer = UserOpetationsPlayer();
+  ReceiveInputPlayer receiveInputPlayer = ReceiveInputPlayer(); // ユーザからの入力判断
+  MovingDisturverPlayer movingDisturberPlayer = MovingDisturverPlayer(); // 邪魔者の座標を更新
+  GameJumpAnimationPlayer gameJumpAnimationPlayer = GameJumpAnimationPlayer(); // ユーザからの入力判断
+  GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
 }
 final world = WorldPool();
 
@@ -270,8 +297,13 @@ class ObjectManager {
   // ============================================================
   // クラス変数群
   // ============================================================
+
   // ジャンプ管理用の辞書
   static final Map<WorldObject, _JumpData> _jumpingObjects = {}; // {obj, 着地予定座標}
+
+  // 管理用の辞書
+  static final Map<WorldObject, _MoveData> _movingObjects = {}; // {obj, 着地予定座標}
+
 
   // ============================================================
   // スタティックメソッド群。
@@ -472,6 +504,79 @@ class ObjectManager {
     return "running";
   }
 
+
+  // ============================================================
+  // 直線移動メソッド（一定速度）
+  // 任意座標 → 任意座標
+  // ============================================================
+  static String toLinearMove(
+    WorldObject obj,
+    (
+      double targetX,
+      double targetY,
+      double durationSec
+    ) params,
+  ) {
+
+    final (
+      targetX,
+      targetY,
+      durationSec
+    ) = params;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // ------------------------------------------------------------
+    // 🟢 初回登録
+    // ------------------------------------------------------------
+    if (!_movingObjects.containsKey(obj)) {
+      _movingObjects[obj] = _MoveData(
+        startX: obj.position.dx,
+        startY: obj.position.dy,
+        targetX: targetX,
+        targetY: targetY,
+        startTimeMs: now,
+      );
+    }
+
+    final data = _movingObjects[obj]!;
+
+    final elapsedSec =
+        (now - data.startTimeMs) / 1000.0;
+
+    final progress =
+        (elapsedSec / durationSec).clamp(0.0, 1.0);
+
+    // ------------------------------------------------------------
+    // 🔵 線形補間（Lerp）
+    // ------------------------------------------------------------
+    final newX =
+        data.startX +
+        (data.targetX - data.startX) * progress;
+
+    final newY =
+        data.startY +
+        (data.targetY - data.startY) * progress;
+
+    // ------------------------------------------------------------
+    // 🔴 到達判定
+    // ------------------------------------------------------------
+    if (progress >= 1.0) {
+
+      obj.position = Offset(data.targetX, data.targetY);
+
+      _movingObjects.remove(obj);
+
+      return "ok";
+    }
+
+    // ------------------------------------------------------------
+    // 🟢 移動中
+    // ------------------------------------------------------------
+    obj.position = Offset(newX, newY);
+
+    return "running";
+  }
 }
 
 
@@ -920,7 +1025,6 @@ class GameStoryPlayer extends SuperPlayer {
           ObjectManager.toJump]
         ]
       ];
-
   }
   
   @override
@@ -968,17 +1072,17 @@ class GameInitPlayer extends SuperPlayer {
     this.animation_film_3dlist = [
 
         // 空想隠す。
-        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
-         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
-         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
-         [world.objects["空想アノアノ右目"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
-         [world.objects["空想アノアノ口"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove],
-         [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 1, ObjectManager.toMove]],
+        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
+         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
+         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ右目"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ口"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove]],
 
         // 既に存在するゲームオブジェクトを初期位置に移動させる。
-        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump],
-         [world.objects["アノアノ口"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump],
-         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 1, ObjectManager.toJump]],
+        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump],
+         [world.objects["アノアノ口"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump]],
       ];  
   }
   // 非同期サービスの開始
@@ -991,7 +1095,7 @@ class GameInitPlayer extends SuperPlayer {
     // ============================================
     // 建物
     ObjectCreator.createGIF(
-      objectName: "建物",
+      objectName: "建物_1",
       assetPaths: [
           "assets/images/tatemono_1.png",
           "assets/images/tatemono_2.png",
@@ -1003,10 +1107,74 @@ class GameInitPlayer extends SuperPlayer {
     );
     // UFO
     ObjectCreator.createGIF(
-      objectName: "UFO",
+      objectName: "UFO_1",
       assetPaths: [
           "assets/images/ufo_1.png",
           "assets/images/ufo_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+      width: 500,
+      height: 1000,
+      enableCollision: true,
+    );
+    // 建物
+    ObjectCreator.createGIF(
+      objectName: "建物_2",
+      assetPaths: [
+          "assets/images/tatemono_1.png",
+          "assets/images/tatemono_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+      width: 500,
+      height: 1000,
+      enableCollision: true,
+    );
+    // UFO
+    ObjectCreator.createGIF(
+      objectName: "UFO_2",
+      assetPaths: [
+          "assets/images/ufo_1.png",
+          "assets/images/ufo_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+      width: 500,
+      height: 1000,
+      enableCollision: true,
+    );
+    // 建物
+    ObjectCreator.createGIF(
+      objectName: "建物_3",
+      assetPaths: [
+          "assets/images/tatemono_1.png",
+          "assets/images/tatemono_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+      width: 500,
+      height: 1000,
+      enableCollision: true,
+    );
+    // UFO
+    ObjectCreator.createGIF(
+      objectName: "UFO_3",
+      assetPaths: [
+          "assets/images/ufo_1.png",
+          "assets/images/ufo_2.png",
+        ],
+      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+      width: 500,
+      height: 1000,
+      enableCollision: true,
+    );
+
+    // ============================================
+    // アイテムオブジェクトの生成（見えないところに。）
+    // ============================================
+    // UFO
+    ObjectCreator.createGIF(
+      objectName: "アイテム_羽_1",
+      assetPaths: [
+          "assets/images/hane_1.png",
+          "assets/images/hane_2.png",
         ],
       position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
       width: 500,
@@ -1030,6 +1198,103 @@ class GameInitPlayer extends SuperPlayer {
     this.wait_time = result.$4;
     this.end_time = result.$5;
     this.flag_all_film_finished = result.$6;
+  }
+}
+
+
+// ユーザの入力を受け取るプレイヤー 
+class ReceiveInputPlayer extends SuperPlayer {
+
+  // ==============================
+  // 🔵 クラス変数（入力保持用）
+  // ==============================
+  bool isTouching = false;
+  Offset? tapPosition;
+
+  @override
+  void init() {
+    // 初期化（必要なら後で）
+  }
+
+  @override
+  void mainScript() 
+  {
+    // ------------------------------
+    // 🟢 現在の入力状態を取得して保持
+    // ------------------------------
+    isTouching = SystemEnvService.isTouching;
+    tapPosition = SystemEnvService.tapPosition;
+    
+    // 入力flagの削除
+    SystemEnvService.clearTap();
+  }
+}
+
+
+// 邪魔者の座標を更新
+class MovingDisturverPlayer extends SuperPlayer {
+  // ==============================
+  // 🔵 クラス変数
+  // ==============================
+  // クラス変数
+  final Offset disturver_reset_position = const Offset(-20, 500);
+  final Offset anoanoBiasOffset = const Offset(200, 500);
+  double disturver_speed = 1; // 邪魔者オブジェクトのスピード
+
+  // フィルム再生用キャッシュ
+  String frame_result = "ok";
+  late List<dynamic> list_2d;
+  int wait_time = 1;
+  int? end_time = null;
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1;
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2;
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3;
+  bool item_and_disturver_animation_film_3dlist_1_end = false;
+  bool item_and_disturver_animation_film_3dlist_2_end = false;
+  bool item_and_disturver_animation_film_3dlist_3_end = false;
+  bool flag_all_film_finished = false;
+
+  @override
+  void init() {
+    // マップPattern１
+    this.item_and_disturver_animation_film_3dlist_1 = [
+        // 邪魔者の座標を動かす。
+        [[world.objects["建物_1"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
+         [world.objects["UFO_1"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
+      ];  
+
+    // マップPattern２
+    this.item_and_disturver_animation_film_3dlist_2 = [
+        // 邪魔者の座標を動かす。
+        [[world.objects["建物_2"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
+         [world.objects["UFO_2"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
+      ];  
+
+    // マップPattern３
+    this.item_and_disturver_animation_film_3dlist_3 = [
+        // 邪魔者の座標を動かす。
+         [[world.objects["建物_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
+          [world.objects["UFO_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
+      ];
+  }
+
+  @override
+  void mainScript() 
+  {
+    // フィルムを実行
+    final result = AnimationFilmService.runAnimationFilm(
+      this.frame_result,
+      this.item_and_disturver_animation_film_3dlist_1,
+      this.list_2d,
+      this.wait_time,
+      this.end_time,
+    );
+    this.frame_result = result.$1;
+    this.item_and_disturver_animation_film_3dlist_1 = result.$2;
+    this.list_2d = result.$3;
+    this.wait_time = result.$4;
+    this.end_time = result.$5;
+    this.item_and_disturver_animation_film_3dlist_1_end = result.$6;
   }
 }
 
@@ -1139,7 +1404,10 @@ class _MyAppState extends State<MyApp>
     // ゲームモード
     Mode_Game = ScheduleMaking(
       [
-        world.userOpetationsPlayer
+        world.receiveInputPlayer, // ユーザーからの入力の判断
+        world.movingDisturberPlayer, // 邪魔者の座標を遷移
+        world.gameJumpAnimationPlayer, // ユーザの入力に対するジャンプ座標処理
+        world.gameoverJudgmentPlayer // ゲームオーバー判断
       ],
     );
 
