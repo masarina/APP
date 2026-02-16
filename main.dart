@@ -1209,6 +1209,7 @@ class GameInitPlayer extends SuperPlayer {
   // クラス変数
   final Offset hiddenOffset = const Offset(-10000, -10000);
   final Offset anoanoBiasOffset = const Offset(200, 500);
+  bool flag_object_created = false;
 
   // フィルム再生用キャッシュ
   String frame_result = "ok";
@@ -1240,6 +1241,7 @@ class GameInitPlayer extends SuperPlayer {
       ];  
   }
   // 非同期サービスの開始
+
   
   @override
   void mainScript() 
@@ -1247,101 +1249,106 @@ class GameInitPlayer extends SuperPlayer {
     // ============================================
     // 邪魔オブジェクトの生成（見えないところに。）
     // ============================================
-    // 建物
-    ObjectCreator.createGIF(
-      objectName: "建物_1",
-      assetPaths: [
-          "assets/images/tatemono_1.png",
-          "assets/images/tatemono_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 401, // 表示順番
-    );
-    // UFO
-    ObjectCreator.createGIF(
-      objectName: "UFO_1",
-      assetPaths: [
-          "assets/images/ufo_1.png",
-          "assets/images/ufo_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 402, // 表示順番
-    );
-    // 建物
-    ObjectCreator.createGIF(
-      objectName: "建物_2",
-      assetPaths: [
-          "assets/images/tatemono_1.png",
-          "assets/images/tatemono_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 403, // 表示順番
-    );
-    // UFO
-    ObjectCreator.createGIF(
-      objectName: "UFO_2",
-      assetPaths: [
-          "assets/images/ufo_1.png",
-          "assets/images/ufo_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 404, // 表示順番
-    );
-    // 建物
-    ObjectCreator.createGIF(
-      objectName: "建物_3",
-      assetPaths: [
-          "assets/images/tatemono_1.png",
-          "assets/images/tatemono_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 405, // 表示順番
-    );
-    // UFO
-    ObjectCreator.createGIF(
-      objectName: "UFO_3",
-      assetPaths: [
-          "assets/images/ufo_1.png",
-          "assets/images/ufo_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 406, // 表示順番
-    );
+    if (!this.flag_object_created){
+      // 建物
+      ObjectCreator.createGIF(
+        objectName: "建物_1",
+        assetPaths: [
+            "assets/images/tatemono_1.png",
+            "assets/images/tatemono_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 401, // 表示順番
+      );
+      // UFO
+      ObjectCreator.createGIF(
+        objectName: "UFO_1",
+        assetPaths: [
+            "assets/images/ufo_1.png",
+            "assets/images/ufo_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 402, // 表示順番
+      );
+      // 建物
+      ObjectCreator.createGIF(
+        objectName: "建物_2",
+        assetPaths: [
+            "assets/images/tatemono_1.png",
+            "assets/images/tatemono_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 403, // 表示順番
+      );
+      // UFO
+      ObjectCreator.createGIF(
+        objectName: "UFO_2",
+        assetPaths: [
+            "assets/images/ufo_1.png",
+            "assets/images/ufo_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 404, // 表示順番
+      );
+      // 建物
+      ObjectCreator.createGIF(
+        objectName: "建物_3",
+        assetPaths: [
+            "assets/images/tatemono_1.png",
+            "assets/images/tatemono_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 405, // 表示順番
+      );
+      // UFO
+      ObjectCreator.createGIF(
+        objectName: "UFO_3",
+        assetPaths: [
+            "assets/images/ufo_1.png",
+            "assets/images/ufo_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 406, // 表示順番
+      );
 
-    // ============================================
-    // アイテムオブジェクトの生成（見えないところに。）
-    // ============================================
-    // UFO
-    ObjectCreator.createGIF(
-      objectName: "アイテム_羽_1",
-      assetPaths: [
-          "assets/images/hane_1.png",
-          "assets/images/hane_2.png",
-        ],
-      position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-      width: 500,
-      height: 1000,
-      enableCollision: true,
-      layer: 500, // 表示順番
-    );
+      // ============================================
+      // アイテムオブジェクトの生成（見えないところに。）
+      // ============================================
+      // UFO
+      ObjectCreator.createGIF(
+        objectName: "アイテム_羽_1",
+        assetPaths: [
+            "assets/images/hane_1.png",
+            "assets/images/hane_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 500,
+        height: 1000,
+        enableCollision: true,
+        layer: 500, // 表示順番
+      );
+
+      // アイテム作成できたので、フラグをオンにする。
+      this.flag_object_created = true;
+    }
 
     // ============================================
     // ゲームの初期化
@@ -2267,8 +2274,14 @@ class _MyAppState extends State<MyApp>
     // App起動した
     else if (this.schedule_status == "App起動時の処理完了") 
     {
-      // ホーム画面に移行。
       next_schedule = Mode_HomeInit;
+      this.schedule_status = "ホーム初期化完了";
+    }
+
+    // ホーム初期化完了した
+    else if (this.schedule_status == "ホーム初期化完了")
+    {
+      next_schedule = Mode_Home;
       this.schedule_status = "ホーム画面";
     }
 
