@@ -252,6 +252,8 @@ class AnimationFilmService {
   // ============================================
   // ★ インデックス管理用（軽量化ポイント）
   // ============================================
+  static int currentIndex = 0;
+
   static
   (
     String newFrameResult,
@@ -259,7 +261,6 @@ class AnimationFilmService {
     List<dynamic> newList2D,
     int newWaitTime,
     int? newEndTime,
-    int newCurrentIndex,
     bool isFilmEmpty
   )
   runAnimationFilm(
@@ -269,26 +270,33 @@ class AnimationFilmService {
     List<dynamic> list2d,
     int waitTime,
     int? endTime,
-    int currentIndex,   // ← 追加
 
   ) {
 
+    // ============================================
+    // 待機開始
+    // ============================================
     if (endTime == null){
+
       int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       endTime = now_time + waitTime;
     }
 
+    // ============================================
+    // 経過チェック
+    // ============================================
     int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     if (endTime <= now_time) {
 
       endTime = null;
 
+      // removeAtせず、インデックスで読む
       if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
 
         if (currentIndex < animationFilm3DList.length) {
           list2d = animationFilm3DList[currentIndex];
-          currentIndex++;   // ← プレイヤー専用インデックス
+          currentIndex++;
         }
       }
 
@@ -311,11 +319,9 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
-      currentIndex,   // ← 返す
       currentIndex >= animationFilm3DList.length
     );
   }
-
 }
 
 
