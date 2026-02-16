@@ -245,6 +245,9 @@ class ComponentsService {
 //
 // 【例】・
 // ==============================================================
+
+// インデックス管理用
+int animation_film_service_currentIndex = 0;
 class AnimationFilmService {
 
   static
@@ -267,11 +270,6 @@ class AnimationFilmService {
   ) {
 
     // ============================================
-    // ★ インデックス管理用（軽量化ポイント）
-    // ============================================
-    int currentIndex = 0;
-
-    // ============================================
     // 待機開始
     // ============================================
     if (endTime == null){
@@ -292,9 +290,9 @@ class AnimationFilmService {
       // removeAtせず、インデックスで読む
       if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
 
-        if (currentIndex < animationFilm3DList.length) {
-          list2d = animationFilm3DList[currentIndex];
-          currentIndex++;
+        if (animation_film_service_currentIndex < animationFilm3DList.length) {
+          list2d = animationFilm3DList[animation_film_service_currentIndex];
+          animation_film_service_currentIndex++;
         }
       }
 
@@ -317,7 +315,7 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
-      currentIndex >= animationFilm3DList.length
+      animation_film_service_currentIndex >= animationFilm3DList.length
     );
   }
 }
@@ -369,6 +367,7 @@ class WorldPool {
   ReceiveInputPlayer receiveInputPlayer = ReceiveInputPlayer(); // ユーザからの入力判断
   MovingDisturverPlayer movingDisturberPlayer = MovingDisturverPlayer(); // 邪魔者の座標を更新
   CollisionGimmickPlayer collisionGimmickPlayer = CollisionGimmickPlayer(); // コライダー判定フラグ
+  CollisionResolvePlayer collisionResolvePlayer = CollisionResolvePlayer(); // コライダー判定フラグ処理
   GameJumpAnimationPlayer gameJumpAnimationPlayer = GameJumpAnimationPlayer(); // ユーザからの入力判断
   GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
 }
@@ -591,7 +590,6 @@ class ObjectManager {
   }
 
 
-
   // ============================================================
   // 直線移動メソッド（一定速度）
   // 任意座標 → 任意座標
@@ -664,6 +662,27 @@ class ObjectManager {
 
     return "running";
   }
+
+
+  // ============================================================
+  // ⬇ 落下メソッド（重力）
+  // ------------------------------------------------------------
+  // duration不要・一定速度落下型
+  // ============================================================
+  static String toFall(
+    WorldObject obj,
+    (
+      double fallSpeed,
+    ) params,
+  ) {
+    final (fallSpeed,) = params;
+
+    obj.position += Offset(0, fallSpeed);
+
+    return "running";
+  }
+
+
 }
 
 
@@ -1440,7 +1459,7 @@ class MovingDisturverPlayer extends SuperPlayer {
 
 
 // ジャンプボタンが押されていたら、キャラをジャンプさせるPlayer 
-class gameJumpAnimationPlayer extends SuperPlayer {
+class GameJumpAnimationPlayer extends SuperPlayer {
 
   // ==============================
   // 🔵 クラス変数
@@ -1448,6 +1467,13 @@ class gameJumpAnimationPlayer extends SuperPlayer {
   final Offset hiddenOffset = const Offset(-10000, -10000);
   final Offset anoanoBiasOffset = const Offset(200, 500);
   bool flag_jumping_now = false; // ジャンプ中ならばtrueにする。
+  bool isGrounded = false; //
+
+  // CollisionResolvePlayer用。
+  int currentJumpCount = 0;   // 現在のジャンプ回数
+  int maxJumpCount = 2;       // 最大ジャンプ回数
+  bool canMoreJump = true;    // 追加ジャンプ可能か
+
 
   // ==============================
   // フィルム再生用キャッシュ
@@ -1510,6 +1536,9 @@ class gameJumpAnimationPlayer extends SuperPlayer {
         this.wait_time = result.$4;
         this.end_time = result.$5;
         this.flag_all_film_finished = result.$6;
+
+        // 重複ジャンプなので、「現在の連続ジャンプ数」をインクリメント。
+        this.currentJumpCount++;
       }
 
       // ジャンプ中ではなかった。→1段ジャンプ（最初のジャンプ）の実行
@@ -1527,6 +1556,9 @@ class gameJumpAnimationPlayer extends SuperPlayer {
         this.wait_time = result.$4;
         this.end_time = result.$5;
         this.flag_all_film_finished = result.$6;
+
+        // 「現在の連続ジャンプ数」を１に強制。
+        this.currentJumpCount = 1; 
       }
 
       // ジャンプ開始したので`ジャンプ中フラグ`をオン。
@@ -1643,8 +1675,183 @@ class CollisionGimmickPlayer extends SuperPlayer {
       }
     }
   }
-
 }
+
+
+// ==============================================================
+// 💥 CollisionResolvePlayer
+// --------------------------------------------------------------
+// 【役割】
+//  CollisionGimmickPlayer が収集した衝突情報をもとに、
+//  ・座標補正（物理解決）
+//  ・接地状態の管理
+//  ・ゲームオーバー判定フラグの更新
+//  を行う専用Player。
+//
+// 【設計思想】
+//  ・衝突「検出」と「解決」は分離する
+//  ・このクラスは “解決” のみを担当
+//  ・副作用は最小限（座標補正とフラグ操作のみ）
+//
+// 【状態管理対象】
+//  ・flag_jumping_now
+//  ・isGrounded
+//  ・flag_gameover
+// ==============================================================
+class CollisionResolvePlayer extends SuperPlayer {
+
+  @override
+  void init() {
+    // 状態を持たないため初期化処理なし
+  }
+
+  @override
+  void mainScript() {
+
+    // ==========================================================
+    // 🎮 プレイヤー（アノアノ輪郭）を取得
+    // ==========================================================
+    final player = world.objects["アノアノ輪郭"];
+    if (player == null) return;
+
+    // ==========================================================
+    // 📋 今フレームの衝突一覧を取得
+    // （CollisionGimmickPlayer が毎フレーム更新）
+    // ==========================================================
+    final jumpPlayer = world.gameJumpAnimationPlayer;
+    final hitList = world.collisionGimmickPlayer.hitList;
+
+    // ==========================================================
+    // 🟢 今フレームで「地面に接触したか」判定用フラグ
+    // ==========================================================
+    bool touchedGroundThisFrame = false;
+
+    // ==========================================================
+    // 🔁 衝突ごとの処理ループ
+    // ==========================================================
+    for (final hit in hitList) {
+
+      final obj = hit.$1;
+      final side = hit.$2;
+
+      switch (side) {
+
+        // ======================================================
+        // 🟢 NORTH：上から着地
+        // ------------------------------------------------------
+        // 状況：
+        //   プレイヤーが建物の上面に乗った
+        //
+        // 処理：
+        //   ・Y座標を建物上面に補正
+        //   ・ジャンプ終了
+        //   ・接地状態ON
+        // ======================================================
+        case HitSide.north:
+
+          // 建物とプレイヤーのコライダー取得
+          final Rect objRect = obj.colliderRect!;
+          final Rect playerRect = player.colliderRect!;
+
+          // 建物の上面 - プレイヤー半分高さ
+          final double correctedY =
+              objRect.top - (playerRect.height / 2);
+
+          // Y座標補正（Xはそのまま）
+          player.position = Offset(
+            player.position.dx,
+            correctedY,
+          );
+
+          // ジャンプ状態リセット
+          jumpPlayer.flag_jumping_now = false;
+          jumpPlayer.isGrounded = true;
+
+          // 🔥 ジャンプ回数リセット
+          jumpPlayer.currentJumpCount = 0;
+          jumpPlayer.canMoreJump = true;
+
+          touchedGroundThisFrame = true;
+
+          break;
+
+
+        // ======================================================
+        // 🔴 その他衝突 → 即ゲームオーバー
+        // ======================================================
+        case HitSide.south:
+        case HitSide.west:
+        case HitSide.east:
+
+          // ゲームオーバープレイヤーのフラグを直接trueにする。
+          world.gameoverJudgmentPlayer.flag_gameover = true;
+          break;
+
+        case HitSide.none:
+          break;
+      }
+    }
+
+    // ==========================================================
+    // 🌪 落下判定（多段ジャンプ考慮）
+    // ==========================================================
+    if (!touchedGroundThisFrame) {
+
+      jumpPlayer.isGrounded = false;
+
+      // ------------------------------------------------------
+      // 落下条件：
+      // ・現在ジャンプ中ではない
+      // ・追加ジャンプ回数を使い切った
+      // ------------------------------------------------------
+      final bool shouldFall =
+          !jumpPlayer.flag_jumping_now &&
+          jumpPlayer.currentJumpCount >= jumpPlayer.maxJumpCount;
+
+      if (shouldFall) {
+
+        ObjectManager.toFall(
+          player,
+          (5,)  // 落下速度
+        );
+      }
+    }
+  }
+}
+
+
+// ==============================================================
+// 💀 GameoverJudgmentPlayer
+// --------------------------------------------------------------
+// 【役割】
+//  ・CollisionResolvePlayer が立てた
+//    flag_gameover を監視
+//  ・ON になったらゲーム終了処理へ移行
+//
+// 【目的】
+//  ・まずはデバッグ用の最小実装
+//  ・ゲームオーバー状態を確実に検出する
+// ==============================================================
+class GameoverJudgmentPlayer extends SuperPlayer {
+
+  // ==========================================================
+  // 🔴 ゲームオーバーフラグ
+  // CollisionResolvePlayer から ON にされる
+  // ==========================================================
+  bool flag_gameover = false;
+
+  @override
+  void init() {
+    // 起動時はゲームオーバーではない
+    flag_gameover = false;
+  }
+
+  @override
+  void mainScript() {
+    // 特になし。
+  }
+}
+
 
 
 // ==============================================================
@@ -1755,10 +1962,18 @@ class _MyAppState extends State<MyApp>
         world.movingDisturberPlayer, // 邪魔者の座標を遷移
         world.gameJumpAnimationPlayer, // ユーザの入力に対するジャンプ座標処理
         world.collisionGimmickPlayer, // コライダー判定フラグ
-        world., // 着地判定の上書き（建物北に衝突→yを建物北（よりちょっと上）に上書き。）
+        world.collisionResolvePlayer,  // コライダーflagの処理。（例（着地判定の上書き（建物北に衝突→yを建物北（よりちょっと上）に上書き。）））
         world.gameoverJudgmentPlayer // ゲームオーバー判断
       ],
     );
+
+    Mode_GameOver = ScheduleMaking(
+      [
+        world., // オブジェクトを消したり増やしたり調整
+        world. // ‘もう一回する‘ボタンがクリックされれば、もう一回やるフラグをONにするプレイヤー。
+      ],
+    );
+
 
     // ✅ Flutterの描画フレームに同期して update() を呼び出す
     // Tickerは「画面のリフレッシュタイミング」と同じ周期で動く
@@ -1847,11 +2062,15 @@ class _MyAppState extends State<MyApp>
 
     // ゲームが終了した
     else if (
-          this.schedule_status == "ゲームモード"
+          this.schedule_status == "ゲームモード" &&
+          world.gameoverJudgmentPlayer.flag_gameover == true
         ) {
-      // ゲームオーバーモードに遷移。
+
       next_schedule = Mode_GameOver;
       this.schedule_status = "ゲームオーバーモード";
+
+      // フラグをもとに戻す。
+      world.gameoverJudgmentPlayer.flag_gameover = false;
     }
 
     // ゲーム終了画面で「もう一度やる」ボタンが押された
