@@ -115,18 +115,81 @@ class SystemEnvService
 // コンポーネントサービス
 // (ゲーム世界の「意味のある判断」をする場所)
 // ==============================================================
+enum HitSide {
+  none,
+  north,
+  south,
+  west,
+  east,
+}// --------------------------------------------------------------
+// 💥 衝突方向（優先順位つき）
+// ※ NORTH を最優先にする設計
+// --------------------------------------------------------------
 class ComponentsService {
 
-  // -----------------------------
-  // 💥 衝突判定
-  // -----------------------------
+  // ------------------------------------------------------------
+  // 💥 衝突判定（従来互換：boolのみ欲しい場合）
+  // ------------------------------------------------------------
   static bool hit(WorldObject a, WorldObject b) {
-    if (!a.enableCollision || !b.enableCollision) return false;
-    if (a.colliderRect == null || b.colliderRect == null) return false;
-
-    return a.colliderRect!.overlaps(b.colliderRect!);
+    return hitSide(a, b) != HitSide.none;
   }
-  
+
+  // ------------------------------------------------------------
+  // 💥 衝突方向付き判定
+  // 返り値：HitSide
+  // 優先順位：北 → 南 → 西 → 東
+  // ------------------------------------------------------------
+  static HitSide hitSide(WorldObject a, WorldObject b) {
+    if (!a.enableCollision || !b.enableCollision) return HitSide.none;
+    if (a.colliderRect == null || b.colliderRect == null) return HitSide.none;
+
+    final Rect ra = a.colliderRect!;
+    final Rect rb = b.colliderRect!;
+
+    // そもそも当たっていない
+    if (!ra.overlaps(rb)) return HitSide.none;
+
+    // ----------------------------------------------------------
+    // 🔵 重なり領域（intersection）を計算
+    // ----------------------------------------------------------
+    final Rect inter = ra.intersect(rb);
+
+    // 中心差分（a基準）
+    final double dx = rb.center.dx - ra.center.dx;
+    final double dy = rb.center.dy - ra.center.dy;
+
+    // ----------------------------------------------------------
+    // 🧭 どの面にめり込んだか判定
+    // overlap が小さい方向 = 接触面
+    // ----------------------------------------------------------
+    final double overlapX = inter.width;
+    final double overlapY = inter.height;
+
+    // ================================
+    // 🔴 縦方向優先（NORTH優先設計）
+    // ================================
+    if (overlapY <= overlapX) {
+
+      // b が a より上にいる → 北衝突
+      if (dy < 0) {
+        return HitSide.north;
+      }
+
+      // b が下 → 南衝突
+      return HitSide.south;
+    }
+
+    // ================================
+    // 🟢 横方向
+    // ================================
+    if (dx < 0) {
+      return HitSide.west;
+    }
+
+    return HitSide.east;
+  }
+
+
   // -----------------------------
   // 👆 クリック判定
   // -----------------------------
@@ -141,6 +204,26 @@ class ComponentsService {
     );
   }
 }
+
+// --------------------------------------------------------------
+// 🧪 使用例（Player側）
+// --------------------------------------------------------------
+// final side = ComponentsService.hitSide(player, wall);
+//
+// switch (side) {
+//   case HitSide.north:
+//     // 上から着地した時の処理
+//     break;
+//   case HitSide.south:
+//     // 下からぶつかった
+//     break;
+//   case HitSide.west:
+//   case HitSide.east:
+//     // 横衝突
+//     break;
+//   case HitSide.none:
+//     break;
+// }
 
 
 // ==============================================================
@@ -285,6 +368,7 @@ class WorldPool {
   GameStoryPlayer gameStoryPlayer = GameStoryPlayer();
   ReceiveInputPlayer receiveInputPlayer = ReceiveInputPlayer(); // ユーザからの入力判断
   MovingDisturverPlayer movingDisturberPlayer = MovingDisturverPlayer(); // 邪魔者の座標を更新
+  CollisionGimmickPlayer collisionGimmickPlayer = CollisionGimmickPlayer(); // コライダー判定フラグ
   GameJumpAnimationPlayer gameJumpAnimationPlayer = GameJumpAnimationPlayer(); // ユーザからの入力判断
   GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
 }
@@ -1484,6 +1568,85 @@ class gameJumpAnimationPlayer extends SuperPlayer {
 }
 
 
+// オブジェクト同士が衝突していたら、衝突flagを作るプレイヤー
+class CollisionGimmickPlayer extends SuperPlayer {
+
+  // 今回の衝突オブジェクトの一覧
+  // [衝突obj, 衝突方向]
+  late List<(WorldObject, HitSide)> hitList;
+
+  @override
+  void init() {
+    hitList = [];
+  }
+
+  @override
+  void mainScript() {
+
+    // 毎フレームリセット
+    hitList.clear();
+
+    final objects = [
+      world.objects["建物_1"],
+      world.objects["建物_2"],
+      world.objects["建物_3"],
+      world.objects["UFO_1"],
+      world.objects["UFO_2"],
+      world.objects["UFO_3"],
+    ];
+
+    final player = world.objects["アノアノ輪郭"];
+    if (player == null) return;
+
+    // -----------------------------
+    // 🔁 全オブジェクトをチェック
+    // -----------------------------
+    for (final obj in objects) {
+
+      if (obj == null) continue;
+
+      final side =
+          ComponentsService.hitSide(player, obj);
+
+      if (side != HitSide.none) {
+
+        // ⭐ 衝突情報を保存
+        hitList.add((obj, side));
+      }
+    }
+
+    // -----------------------------
+    // 🔥 衝突結果を処理
+    // -----------------------------
+    for (final hit in hitList) {
+
+      final obj = hit.$1;
+      final side = hit.$2;
+
+      switch (side) {
+
+        case HitSide.north:
+          // 上から着地
+          break;
+
+        case HitSide.south:
+          // 下から衝突
+          break;
+
+        case HitSide.west:
+        case HitSide.east:
+          // 横衝突
+          break;
+
+        case HitSide.none:
+          break;
+      }
+    }
+  }
+
+}
+
+
 // ==============================================================
 // 💫 ScheduleMaking（プレイヤーを格納するリスト型自体をこれで作る。）
 // ==============================================================
@@ -1590,8 +1753,9 @@ class _MyAppState extends State<MyApp>
       [
         world.receiveInputPlayer, // ユーザーからの入力の判断
         world.movingDisturberPlayer, // 邪魔者の座標を遷移
-        world.movingDisturberPlayer, // 邪魔者の座標を遷移
         world.gameJumpAnimationPlayer, // ユーザの入力に対するジャンプ座標処理
+        world.collisionGimmickPlayer, // コライダー判定フラグ
+        world., // 着地判定の上書き（建物北に衝突→yを建物北（よりちょっと上）に上書き。）
         world.gameoverJudgmentPlayer // ゲームオーバー判断
       ],
     );
