@@ -350,7 +350,9 @@ abstract class SuperPlayer {
 // ==============================================================
 abstract class WorldObject {
   Offset position;
-  WorldObject(this.position);
+  int layer; // 画面オブジェクトの表示順番。レイヤ番号。
+
+  WorldObject(this.position, {this.layer = 0});
 
   // ⭐ 当たり判定フラグ（基本はOFF）
   bool enableCollision = false;
@@ -708,9 +710,11 @@ class CircleObject extends WorldObject {
     required Offset position,
     required this.color,
     required this.size,
+    int layer = 0,   // 画面オブジェクトに照射するレイヤ数。
   }) : super(position) {
     enableCollision = true;
   }
+  
 
   @override
   Rect get colliderRect {
@@ -742,6 +746,7 @@ class ImageObject extends WorldObject {
     bool enableCollision = false,
     Offset? collisionOffset,
     Size? collisionSize,
+    int layer = 0,   // 画面オブジェクトに照射するレイヤ数。
   })  : collisionOffset = collisionOffset ?? Offset.zero,
         collisionSize = collisionSize ?? Size(width, height),
         super(position) {
@@ -778,6 +783,7 @@ class GifObject extends WorldObject {
     required this.height,
     this.rotation = 0.0,
     bool enableCollision = false,
+    int layer = 0, // 画面照射する順番。
   }) : super(position) {
     this.enableCollision = enableCollision;
   }
@@ -827,10 +833,10 @@ class ObjectCreator {
     required double height,
     double rotation = 0.0,
 
-    // ⭐ 追加
     bool enableCollision = false,
     Offset? collisionOffset,
     Size? collisionSize,
+    int layer = 0,   // 表示順番
   }) {
     final image = ImageObject(
       position: position,
@@ -841,6 +847,7 @@ class ObjectCreator {
       enableCollision: enableCollision,
       collisionOffset: collisionOffset,
       collisionSize: collisionSize,
+      layer: layer,  // 表示順番
     );
 
     world.objects[objectName] = image;
@@ -855,6 +862,7 @@ class ObjectCreator {
     required double height,
     double rotation = 0.0, // ← 追加
     bool enableCollision = false,
+    int layer = 0,   // 表示順番
   }) {
     final gif = GifObject(
       position: position,
@@ -863,6 +871,7 @@ class ObjectCreator {
       height: height,
       rotation: rotation,         // ← 渡す
       enableCollision: enableCollision,
+      layer: layer,  // 表示順番
     );
     world.objects[objectName] = gif;
   }
@@ -875,10 +884,13 @@ class ObjectCreator {
 // ==============================================================
 // アプリ起動時の初期化を担うPlayer 
 class InitPlayer extends SuperPlayer {
+  bool background_created = false;
+
   // __init__(self)に同じ
   @override
   void init() {
     // 特になし
+    debugPrint("InitPlayerの初期化が完了");
   }
   // 非同期サービスの開始
   
@@ -886,17 +898,28 @@ class InitPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
-    // 背景（画面ぴったり）
-    final screenSize = SystemEnvService.screenSize;
-    ObjectCreator.createImage(
-      objectName: "背景",
-      assetPath: "assets/images/kami_free.png",
-      position: Offset.zero,
-      width: screenSize.width,
-      height: screenSize.height,
-    );
-  }
+    // 画面サイズが取得できていない場合は、背景作れないので、パス。
+    if (SystemEnvService.screenSize == Size.zero) {
+      return;
+    }
 
+    if (!this.background_created){
+      // 背景（画面ぴったり）
+      final screenSize = SystemEnvService.screenSize;
+      ObjectCreator.createImage(
+        objectName: "背景",
+        assetPath: "assets/images/kami_kusyakusya.png",
+        position: Offset.zero,
+        width: screenSize.width * 20,
+        height: screenSize.height * 20,
+        rotation: pi / 2,
+        layer: 0, // 一番奥
+      );
+
+      debugPrint("背景を作りました。");
+      this.background_created = true;
+    }
+  }
 }
 
 
@@ -925,6 +948,7 @@ class HomeInitPlayer extends SuperPlayer {
       position: Offset(bias_x, bias_y), // 左上ぴったり
       width: 70,
       height: 70,
+      layer: 100, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "アノアノ左目",
@@ -935,6 +959,7 @@ class HomeInitPlayer extends SuperPlayer {
         ), 
       width: 70,
       height: 70,
+      layer: 101, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "アノアノ口",
@@ -946,6 +971,7 @@ class HomeInitPlayer extends SuperPlayer {
       width: 83.5,
       height: 65,
       rotation: pi, // pi → 180。0,
+      layer: 102, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "アノアノ輪郭",
@@ -958,6 +984,7 @@ class HomeInitPlayer extends SuperPlayer {
       height: 65,
       rotation: pi, // pi → 180。0,
       enableCollision: true,
+      layer: 103, // 表示順番
     );
 
     // 下中央に「スタートボタン」
@@ -971,6 +998,7 @@ class HomeInitPlayer extends SuperPlayer {
       width: 70,
       height: 70,
       enableCollision: true,
+      layer: 200, // 表示順番
     );
 
   }
@@ -1033,6 +1061,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 301, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "ちいさいもこもこ",
@@ -1040,6 +1069,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 302, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "おおきいもこもこ",
@@ -1047,6 +1077,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 303, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ右目",
@@ -1061,6 +1092,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 304, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ口",
@@ -1069,6 +1101,7 @@ class GameStoryPlayer extends SuperPlayer {
       width: 70,
       height: 70,
       rotation: pi, // pi → 180。
+      layer: 305, // 表示順番
     );
     ObjectCreator.createGIF(
       objectName: "空想アノアノ羽",
@@ -1076,6 +1109,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 306, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "アノアノ両目_怒",
@@ -1083,6 +1117,7 @@ class GameStoryPlayer extends SuperPlayer {
       position: Offset(this.hidden_xy, this.hidden_xy),
       width: 70,
       height: 70,
+      layer: 307, // 表示順番
     );
 
     // アニメーションフィルムの作成
@@ -1223,6 +1258,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 401, // 表示順番
     );
     // UFO
     ObjectCreator.createGIF(
@@ -1235,6 +1271,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 402, // 表示順番
     );
     // 建物
     ObjectCreator.createGIF(
@@ -1247,6 +1284,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 403, // 表示順番
     );
     // UFO
     ObjectCreator.createGIF(
@@ -1259,6 +1297,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 404, // 表示順番
     );
     // 建物
     ObjectCreator.createGIF(
@@ -1271,6 +1310,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 405, // 表示順番
     );
     // UFO
     ObjectCreator.createGIF(
@@ -1283,6 +1323,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 406, // 表示順番
     );
 
     // ============================================
@@ -1299,6 +1340,7 @@ class GameInitPlayer extends SuperPlayer {
       width: 500,
       height: 1000,
       enableCollision: true,
+      layer: 500, // 表示順番
     );
 
     // ============================================
@@ -1893,6 +1935,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
       position: hidden_xy,
       width: 250,
       height: 120,
+      layer: 600, // 表示順番
     );
 
     ObjectCreator.createImage(
@@ -1902,6 +1945,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
       width: 180,
       height: 80,
       enableCollision: true,
+      layer: 350, // 表示順番
     );
 
     ObjectCreator.createImage(
@@ -1911,6 +1955,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
       width: 180,
       height: 80,
       enableCollision: true,
+      layer: 351, // 表示順番
     );
 
     ObjectCreator.createImage(
@@ -1921,6 +1966,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
       height: 80,
       rotation: pi,
       enableCollision: true,
+      layer: 352, // 表示順番
     );
   }
 
@@ -2012,10 +2058,9 @@ class GameOverDisplayPlayer extends SuperPlayer {
 
 class GameOverInputPlayer extends SuperPlayer {
 
-  // ==============================
-  // 🔵 クラス変数
-  // ==============================
   bool flag_one_more_start_button = false;
+
+  final Offset hidden_xy = const Offset(-10000, -10000);
 
   @override
   void init() {
@@ -2025,8 +2070,15 @@ class GameOverInputPlayer extends SuperPlayer {
   @override
   void mainScript() {
 
-    final button = world.objects["もう一回やる？ボタン"];
-    if (button == null) return;
+    final button       = world.objects["もう一回やる？ボタン"];
+    final sadRightEye  = world.objects["悲しい右目"];
+    final sadLeftEye   = world.objects["悲しい左目"];
+    final sadMouth     = world.objects["悲しい口"];
+
+    if (button == null ||
+        sadRightEye == null ||
+        sadLeftEye == null ||
+        sadMouth == null) return;
 
     // ==============================
     // 🖱 クリック判定
@@ -2034,6 +2086,30 @@ class GameOverInputPlayer extends SuperPlayer {
     if (ComponentsService.isClicked(button)) {
 
       flag_one_more_start_button = true;
+
+      // ==============================
+      // 👻 全部 hidden に戻す
+      // ==============================
+
+      ObjectManager.toSetPosition(
+        button,
+        (hidden_xy.dx, hidden_xy.dy),
+      );
+
+      ObjectManager.toSetPosition(
+        sadRightEye,
+        (hidden_xy.dx, hidden_xy.dy),
+      );
+
+      ObjectManager.toSetPosition(
+        sadLeftEye,
+        (hidden_xy.dx, hidden_xy.dy),
+      );
+
+      ObjectManager.toSetPosition(
+        sadMouth,
+        (hidden_xy.dx, hidden_xy.dy),
+      );
     }
   }
 }
@@ -2178,7 +2254,8 @@ class _MyAppState extends State<MyApp>
     // モード分岐プログラム
     // =============================================================
     // 変数群
-    late ScheduleMaking next_schedule; // 実行するscheduleが入る。
+    ScheduleMaking next_schedule = Mode_Init; // nullとかにしたいけど、Dart無理みたいだからしょうがない、、
+
 
     // None の場合
     if (this.schedule_status == "None") {
@@ -2351,8 +2428,14 @@ class WorldRenderer {
     final centerX = screenSize.width / 2;
     final centerY = screenSize.height / 2;
 
+    // 表示する順番を決定。
+    final sortedObjects = world.objects.values.toList();
+    sortedObjects.sort(
+      (a, b) => a.layer.compareTo(b.layer)
+    );
+
     return Stack(
-      children: world.objects.values.map((obj) {
+      children: sortedObjects.map((obj) {
 
         // CircleObject
         if (obj is CircleObject) {
