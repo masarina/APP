@@ -245,10 +245,11 @@ class ComponentsService {
 //
 // 【例】・
 // ==============================================================
-
-// インデックス管理用
-int animation_film_service_currentIndex = 0;
 class AnimationFilmService {
+  // ============================================
+  // ★ インデックス管理用（軽量化ポイント）
+  // ============================================
+  static int currentIndex = 0;
 
   static
   (
@@ -290,9 +291,9 @@ class AnimationFilmService {
       // removeAtせず、インデックスで読む
       if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
 
-        if (animation_film_service_currentIndex < animationFilm3DList.length) {
-          list2d = animationFilm3DList[animation_film_service_currentIndex];
-          animation_film_service_currentIndex++;
+        if (currentIndex < animationFilm3DList.length) {
+          list2d = animationFilm3DList[currentIndex];
+          currentIndex++;
         }
       }
 
@@ -315,7 +316,7 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
-      animation_film_service_currentIndex >= animationFilm3DList.length
+      currentIndex >= animationFilm3DList.length
     );
   }
 }
@@ -370,6 +371,8 @@ class WorldPool {
   CollisionResolvePlayer collisionResolvePlayer = CollisionResolvePlayer(); // コライダー判定フラグ処理
   GameJumpAnimationPlayer gameJumpAnimationPlayer = GameJumpAnimationPlayer(); // ユーザからの入力判断
   GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
+  GameOverDisplayPlayer gameOverDisplayPlayer = GameOverDisplayPlayer(); // ゲームオーバーの画面を作る。
+  GameOverInputPlayer gameOverInputPlayer = GameOverInputPlayer(); // ゲームオーバー画面でのユーザからの入力操作で動く。
 }
 final world = WorldPool();
 
@@ -1853,6 +1856,170 @@ class GameoverJudgmentPlayer extends SuperPlayer {
 }
 
 
+class GameOverDisplayPlayer extends SuperPlayer {
+
+  late Offset center_down;
+  final Offset hidden_xy = const Offset(-10000, -10000);
+
+  @override
+  void init() {
+
+    final screenSize = SystemEnvService.screenSize;
+    final half = screenSize.width / 2;
+
+    center_down = Offset(half, half + 50);
+
+    ObjectCreator.createImage(
+      objectName: "もう一回やる？ボタン",
+      assetPath: "assets/images/once_again.png",
+      position: hidden_xy,
+      width: 250,
+      height: 120,
+    );
+
+    ObjectCreator.createImage(
+      objectName: "悲しい右目",
+      assetPath: "assets/images/once_again.png",
+      position: hidden_xy,
+      width: 180,
+      height: 80,
+      enableCollision: true,
+    );
+
+    ObjectCreator.createImage(
+      objectName: "悲しい左目",
+      assetPath: "assets/images/once_again.png",
+      position: hidden_xy,
+      width: 180,
+      height: 80,
+      enableCollision: true,
+    );
+
+    ObjectCreator.createImage(
+      objectName: "悲しい口",
+      assetPath: "assets/images/once_again.png",
+      position: hidden_xy,
+      width: 180,
+      height: 80,
+      rotation: pi,
+      enableCollision: true,
+    );
+  }
+
+  @override
+  void mainScript() {
+
+    // ================================
+    // 🔹 必要オブジェクト取得
+    // ================================
+    final onceAgainButton = world.objects["もう一回やる？ボタン"];
+    final sadRightEye     = world.objects["悲しい右目"];
+    final sadLeftEye      = world.objects["悲しい左目"];
+    final sadMouth        = world.objects["悲しい口"];
+
+    final angryEyes = world.objects["アノアノ両目_怒"];
+    final normalMouth = world.objects["アノアノ口"];
+
+    if (onceAgainButton == null ||
+        sadRightEye == null ||
+        sadLeftEye == null ||
+        sadMouth == null ||
+        angryEyes == null ||
+        normalMouth == null) return;
+
+    // ================================
+    // 🔹 ① ボタンを中央下へ表示
+    // ================================
+    ObjectManager.toSetPosition(
+      onceAgainButton,
+      (center_down.dx, center_down.dy),
+    );
+
+    // ================================
+    // 🔹 ② 怒り目を隠す
+    // ================================
+    ObjectManager.toSetPosition(
+      angryEyes,
+      (hidden_xy.dx, hidden_xy.dy),
+    );
+
+    // ================================
+    // 🔹 ③ 通常口を隠す
+    // ================================
+    ObjectManager.toSetPosition(
+      normalMouth,
+      (hidden_xy.dx, hidden_xy.dy),
+    );
+
+    // ================================
+    // 🔹 ④ 悲しい目を現在位置にコピー
+    //    （怒り目の位置を基準にする）
+    // ================================
+    ObjectManager.toCopyPosition(
+      sadRightEye,
+      (angryEyes,),
+    );
+
+    ObjectManager.toMove(
+      sadRightEye,
+      (20, 0),
+    );
+
+    ObjectManager.toCopyPosition(
+      sadLeftEye,
+      (angryEyes,),
+    );
+
+    ObjectManager.toMove(
+      sadLeftEye,
+      (-20, 0),
+    );
+
+    // ================================
+    // 🔹 ⑤ 悲しい口を表示
+    // ================================
+    ObjectManager.toCopyPosition(
+      sadMouth,
+      (normalMouth,),
+    );
+
+    // 口を反転（念のため毎回指定）
+    ObjectManager.toSetRotationDeg(
+      sadMouth,
+      (180,),
+    );
+  }
+}
+
+
+class GameOverInputPlayer extends SuperPlayer {
+
+  // ==============================
+  // 🔵 クラス変数
+  // ==============================
+  bool flag_one_more_start_button = false;
+
+  @override
+  void init() {
+    flag_one_more_start_button = false;
+  }
+
+  @override
+  void mainScript() {
+
+    final button = world.objects["もう一回やる？ボタン"];
+    if (button == null) return;
+
+    // ==============================
+    // 🖱 クリック判定
+    // ==============================
+    if (ComponentsService.isClicked(button)) {
+
+      flag_one_more_start_button = true;
+    }
+  }
+}
+
 
 // ==============================================================
 // 💫 ScheduleMaking（プレイヤーを格納するリスト型自体をこれで作る。）
@@ -1969,8 +2136,8 @@ class _MyAppState extends State<MyApp>
 
     Mode_GameOver = ScheduleMaking(
       [
-        world., // オブジェクトを消したり増やしたり調整
-        world. // ‘もう一回する‘ボタンがクリックされれば、もう一回やるフラグをONにするプレイヤー。
+        world.gameOverDisplayPlayer, // オブジェクトを消したり増やしたり調整
+        world.gameOverInputPlayer // ‘もう一回する‘ボタンがクリックされれば、もう一回やるフラグをONにするプレイヤー。
       ],
     );
 
@@ -2075,16 +2242,16 @@ class _MyAppState extends State<MyApp>
 
     // ゲーム終了画面で「もう一度やる」ボタンが押された
     else if (
-          this.schedule_status == "ゲームオーバーモード" &&
-          gameButtons.flag_one_more_start_button == true
-        ) {
-      // ボタンを初期化
-      gameButtons.flag_one_more_start_button = false;
+      this.schedule_status == "ゲームオーバーモード" &&
+      world.gameOverInputPlayer.flag_one_more_start_button == true
+    ) {
 
-      // ゲーム初期化に遷移。
+      world.gameOverInputPlayer.flag_one_more_start_button = false;
+
       next_schedule = Mode_GameInit;
       this.schedule_status = "ゲームを初期化しました。";
     }
+
 
 
     // =============================================================
