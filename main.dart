@@ -126,6 +126,7 @@ class ComponentsService {
 
     return a.colliderRect!.overlaps(b.colliderRect!);
   }
+  
   // -----------------------------
   // 👆 クリック判定
   // -----------------------------
@@ -163,9 +164,6 @@ class ComponentsService {
 // ==============================================================
 class AnimationFilmService {
 
-  // ============================================================
-  // アニメーションフィルムを時間管理込みで実行するメソッド
-  // ============================================================
   static
   (
     String newFrameResult,
@@ -173,11 +171,10 @@ class AnimationFilmService {
     List<dynamic> newList2D,
     int newWaitTime,
     int? newEndTime,
-    bool isFilmEmpty //　
+    bool isFilmEmpty
   )
   runAnimationFilm(
 
-    // 現在の状態を受け取る
     String frameResult,
     List<List<List<dynamic>>> animationFilm3DList,
     List<dynamic> list2d,
@@ -186,36 +183,40 @@ class AnimationFilmService {
 
   ) {
 
-    // ============================================================
-    // 待機時間秒カウント開始していなければ、カウント開始。
-    // ============================================================
+    // ============================================
+    // ★ インデックス管理用（軽量化ポイント）
+    // ============================================
+    int currentIndex = 0;
+
+    // ============================================
+    // 待機開始
+    // ============================================
     if (endTime == null){
 
-      // 現在時刻の取得
       int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-      // 現在時刻から待機時間秒後を取得
       endTime = now_time + waitTime;
     }
 
-    // ============================================================
-    // 待機時間秒経過チェック
-    // ============================================================
+    // ============================================
+    // 経過チェック
+    // ============================================
     int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     if (endTime <= now_time) {
 
-      // end_timeをnullに戻す。
       endTime = null;
 
-      // 前回フレームが完了していたら次を読む
+      // removeAtせず、インデックスで読む
       if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
-        list2d = animationFilm3DList.removeAt(0);
+
+        if (currentIndex < animationFilm3DList.length) {
+          list2d = animationFilm3DList[currentIndex];
+          currentIndex++;
+        }
       }
 
       frameResult = "None";
 
-      // 抜き取ったフレーム処理。
       for (final cell in list2d) {
 
         final Function func = cell[3];
@@ -233,7 +234,7 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
-      animationFilm3DList.isEmpty
+      currentIndex >= animationFilm3DList.length
     );
   }
 }
@@ -370,7 +371,6 @@ class ObjectManager {
 
   // ==============================
   // 別オブジェクトの座標をコピー
-  // "顔の目" の座標を変更したい場合。
   // ==============================
   static String toCopyPosition(
     WorldObject targetObj,
@@ -387,17 +387,19 @@ class ObjectManager {
   // ジャンプメソッド（多段ジャンプ拡張対応設計）
   // ※ 任意の座標（targetX, targetY）へジャンプ
   // ※ 指定された target座標 に到達したらジャンプ終了
+  // ※ flag_more_jump == true のときのみ追加ジャンプ
   // ============================================================
   static String toJump(
-      WorldObject obj,
-      (
-        double targetX, // ジャンプ先の場所座標x
-        double targetY, // ジャンプ先の場所座標y
-        double jumpPower,
-        double durationSec,
-        int maxJumpCount
-      ) params,
-    ) {
+    WorldObject obj,
+    (
+      double targetX,
+      double targetY,
+      double jumpPower,
+      double durationSec,
+      int maxJumpCount,
+      bool flag_more_jump   // ★ 追加
+    ) params,
+  ) {
 
     // params展開
     final (
@@ -405,15 +407,15 @@ class ObjectManager {
       targetY,
       jumpPower,
       durationSec,
-      maxJumpCount
+      maxJumpCount,
+      flag_more_jump
     ) = params;
 
     final now = DateTime.now().millisecondsSinceEpoch;
 
     // ------------------------------------------------------------
-    // 🟢 初回登録 または 追加ジャンプ判定
+    // 🟢 初回登録
     // ------------------------------------------------------------
-    
     if (!_jumpingObjects.containsKey(obj)) {
 
       _jumpingObjects[obj] = _JumpData(
@@ -424,17 +426,28 @@ class ObjectManager {
         startTimeMs: now,
         jumpCount: 1,
       );
+    }
 
-    } else {
+    // ------------------------------------------------------------
+    // 🟡 追加ジャンプ判定（明示トリガー制）
+    // ------------------------------------------------------------
+    else {
 
-      if (_jumpingObjects[obj]!.jumpCount < maxJumpCount) {
+      final data = _jumpingObjects[obj]!;
 
-        _jumpingObjects[obj]!.startX = obj.position.dx;
-        _jumpingObjects[obj]!.startY = obj.position.dy;
-        _jumpingObjects[obj]!.landingX = targetX;
-        _jumpingObjects[obj]!.landingY = targetY;
-        _jumpingObjects[obj]!.startTimeMs = now;
-        _jumpingObjects[obj]!.jumpCount += 1;
+      if (flag_more_jump &&
+          data.jumpCount < maxJumpCount) {
+
+        // ★ 横移動はそのまま
+        // data.startX は変更しない
+
+        // ★ 縦の基準だけ今の位置にリセット
+        data.startY = obj.position.dy;
+
+        // ★ 時間リセット（放物線再生成）
+        data.startTimeMs = now;
+
+        data.jumpCount += 1;
       }
     }
 
@@ -445,56 +458,45 @@ class ObjectManager {
 
     final data = _jumpingObjects[obj]!;
 
-    final elapsedSec = (
-        now - data.startTimeMs
-        ) / 1000.0;
+    final elapsedSec =
+        (now - data.startTimeMs) / 1000.0;
 
-    final _progress = (
-        elapsedSec / durationSec
-      );
-
-    final progress = _progress.clamp(0.0, 1.0);
+    final progress =
+        (elapsedSec / durationSec).clamp(0.0, 1.0);
 
     // ------------------------------------------------------------
     // 横方向移動（線形補間）
     // ------------------------------------------------------------
-    final newX = (
+    final newX =
         data.startX +
-        (data.landingX - data.startX) * progress
-      );
+        (data.landingX - data.startX) * progress;
 
     // ------------------------------------------------------------
-    // 今この瞬間、基準線から何ピクセル上にいるかを算出
+    // 基準線Y
     // ------------------------------------------------------------
-
-    final baseY = (
+    final baseY =
         data.startY +
-        (data.landingY - data.startY) * progress
-      );
+        (data.landingY - data.startY) * progress;
 
-    final height = (
+    final height =
         4 *
         jumpPower *
-        progress * (1 - progress)
-      );
+        progress * (1 - progress);
 
     final newY = baseY - height;
 
-
     // ------------------------------------------------------------
     // 🔴 着地判定
-    // 条件：
-    // ① progress が 1.0 を超えた
     // ------------------------------------------------------------
     if (progress >= 1.0) {
 
-      obj.position = Offset(data.landingX, data.landingY);
+      obj.position =
+          Offset(data.landingX, data.landingY);
 
       _jumpingObjects.remove(obj);
 
       return "ok";
     }
-
 
     // ------------------------------------------------------------
     // 🟢 ジャンプ中更新
@@ -503,6 +505,7 @@ class ObjectManager {
 
     return "running";
   }
+
 
 
   // ============================================================
@@ -999,7 +1002,8 @@ class GameStoryPlayer extends SuperPlayer {
             world.objects["アノアノ両目_怒"]!.position.dy, // ジャンプ先y座標
             jump_height,
             jump_time,
-            1
+            1,
+            false
           ),
           0,
           ObjectManager.toJump],
@@ -1009,7 +1013,8 @@ class GameStoryPlayer extends SuperPlayer {
             world.objects["アノアノ口"]!.position.dy, // ジャンプ先y座標
             jump_height,
             jump_time,
-            1
+            1,
+            false
           ),
           0,
           ObjectManager.toJump],
@@ -1019,7 +1024,8 @@ class GameStoryPlayer extends SuperPlayer {
             world.objects["アノアノ輪郭"]!.position.dy, // ジャンプ先y座標
             jump_height,
             jump_time,
-            1
+            1,
+            false
           ),
           0,
           ObjectManager.toJump]
@@ -1080,9 +1086,9 @@ class GameInitPlayer extends SuperPlayer {
          [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove]],
 
         // 既に存在するゲームオブジェクトを初期位置に移動させる。
-        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump],
-         [world.objects["アノアノ口"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump],
-         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset, this.anoanoBiasOffset), 0, ObjectManager.toJump]],
+        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump],
+         [world.objects["アノアノ口"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump]],
       ];  
   }
   // 非同期サービスの開始
@@ -1241,7 +1247,15 @@ class MovingDisturverPlayer extends SuperPlayer {
   final Offset anoanoBiasOffset = const Offset(200, 500);
   double disturver_speed = 1; // 邪魔者オブジェクトのスピード
 
+  // 障害物マップを切り替えるの、秒数処理
+  int lastSwitchTimeSec = 0;
+  int switchIntervalSec = 3; // 3秒ごとに切り替える
+  int currentPattern = 1;
+
+
+  // ==============================
   // フィルム再生用キャッシュ
+  // ==============================
   String frame_result = "ok";
   late List<dynamic> list_2d;
   int wait_time = 1;
@@ -1281,20 +1295,191 @@ class MovingDisturverPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
-    // フィルムを実行
+    final nowSec =
+        DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+    // ==========================================
+    // 🔄 一定秒数ごとにパターン切替
+    // ==========================================
+    if (nowSec - lastSwitchTimeSec >= switchIntervalSec) {
+
+      lastSwitchTimeSec = nowSec;
+
+      currentPattern++;
+
+      if (currentPattern > 3) {
+        currentPattern = 1;
+      }
+
+      // フィルム状態リセット
+      frame_result = "ok";
+      end_time = null;
+    }
+
+    // ==========================================
+    // 🎬 現在のパターンを実行
+    // ==========================================
+    List<List<List<dynamic>>> targetFilm;
+
+    if (currentPattern == 1) {
+      targetFilm = item_and_disturver_animation_film_3dlist_1;
+    } else if (currentPattern == 2) {
+      targetFilm = item_and_disturver_animation_film_3dlist_2;
+    } else {
+      targetFilm = item_and_disturver_animation_film_3dlist_3;
+    }
+
     final result = AnimationFilmService.runAnimationFilm(
-      this.frame_result,
-      this.item_and_disturver_animation_film_3dlist_1,
-      this.list_2d,
-      this.wait_time,
-      this.end_time,
+      frame_result,
+      targetFilm,
+      list_2d,
+      wait_time,
+      end_time,
     );
-    this.frame_result = result.$1;
-    this.item_and_disturver_animation_film_3dlist_1 = result.$2;
-    this.list_2d = result.$3;
-    this.wait_time = result.$4;
-    this.end_time = result.$5;
-    this.item_and_disturver_animation_film_3dlist_1_end = result.$6;
+
+    frame_result = result.$1;
+    targetFilm = result.$2;
+    list_2d = result.$3;
+    wait_time = result.$4;
+    end_time = result.$5;
+
+    // パターンごとに保存し直す
+    if (currentPattern == 1) {
+      item_and_disturver_animation_film_3dlist_1 = targetFilm;
+    } else if (currentPattern == 2) {
+      item_and_disturver_animation_film_3dlist_2 = targetFilm;
+    } else {
+      item_and_disturver_animation_film_3dlist_3 = targetFilm;
+    }
+  }
+}
+
+
+// ジャンプボタンが押されていたら、キャラをジャンプさせるPlayer 
+class gameJumpAnimationPlayer extends SuperPlayer {
+
+  // ==============================
+  // 🔵 クラス変数
+  // ==============================
+  final Offset hiddenOffset = const Offset(-10000, -10000);
+  final Offset anoanoBiasOffset = const Offset(200, 500);
+  bool flag_jumping_now = false; // ジャンプ中ならばtrueにする。
+
+  // ==============================
+  // フィルム再生用キャッシュ
+  // ==============================
+  String frame_result = "ok";
+  late List<dynamic> list_2d;
+  int wait_time = 1;
+  int? end_time = null;
+  late List<List<List<dynamic>>> jump_animation_film_3dlist;
+  late List<List<List<dynamic>>> more_jump_animation_film_3dlist;
+  bool flag_all_film_finished = false;
+
+  @override
+  void init() {
+    // 初期化（必要なら後で）
+    
+    // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
+    this.jump_animation_film_3dlist = [
+        // アノアノジャンプ
+        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump],
+         [world.objects["アノアノ口"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump]],
+      ];
+
+    // 重複ジャンプ用
+    this.more_jump_animation_film_3dlist = [
+        // アノアノジャンプ
+        [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, true), 0, ObjectManager.toJump],
+         [world.objects["アノアノ口"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, true), 0, ObjectManager.toJump],
+         [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, true), 0, ObjectManager.toJump]],
+      ];
+
+  }
+
+  @override
+  void mainScript() 
+  {
+    // ------------------------------
+    // 🟢 
+    // ------------------------------
+    // プレイヤーの入力flagをプレイヤーから取得
+    bool flag_jump_from_user_input = world.receiveInputPlayer.isTouching;
+
+    // このフレームでジャンプの入力があった。
+    if (flag_jump_from_user_input){
+      
+      // でもジャンプ中だった。→二段ジャンプ（重複ジャンプ）の実行
+      if (this.flag_jumping_now){
+        // 重複ジャンプを実行
+        final result = AnimationFilmService.runAnimationFilm(
+          this.frame_result,
+          this.more_jump_animation_film_3dlist,
+          this.list_2d,
+          this.wait_time,
+          this.end_time,
+        );
+        this.frame_result = result.$1;
+        this.more_jump_animation_film_3dlist = result.$2;
+        this.list_2d = result.$3;
+        this.wait_time = result.$4;
+        this.end_time = result.$5;
+        this.flag_all_film_finished = result.$6;
+      }
+
+      // ジャンプ中ではなかった。→1段ジャンプ（最初のジャンプ）の実行
+      else if (!this.flag_jumping_now){
+        final result = AnimationFilmService.runAnimationFilm(
+          this.frame_result,
+          this.jump_animation_film_3dlist,
+          this.list_2d,
+          this.wait_time,
+          this.end_time,
+        );
+        this.frame_result = result.$1;
+        this.jump_animation_film_3dlist = result.$2;
+        this.list_2d = result.$3;
+        this.wait_time = result.$4;
+        this.end_time = result.$5;
+        this.flag_all_film_finished = result.$6;
+      }
+
+      // ジャンプ開始したので`ジャンプ中フラグ`をオン。
+      this.flag_jumping_now = true;    
+    }
+
+    // このフレームでジャンプの入力はなかった。
+    else if (!flag_jump_from_user_input){
+
+      // でもジャンプ中だった。→ジャンプしてるobjの座標を、ジャンプ関数で更新する。
+      if (this.flag_jumping_now){
+
+        // ジャンプ座標を遷移
+        final result = AnimationFilmService.runAnimationFilm(
+          this.frame_result,
+          this.jump_animation_film_3dlist,
+          this.list_2d,
+          this.wait_time,
+          this.end_time,
+        );
+        this.frame_result = result.$1;
+        this.jump_animation_film_3dlist = result.$2;
+        this.list_2d = result.$3;
+        this.wait_time = result.$4;
+        this.end_time = result.$5;
+        this.flag_all_film_finished = result.$6;
+      }
+
+      // ジャンプ中でもなかった。→何もしない。
+      else{
+      }
+    }
+
+    // ジャンプが終了していたら、フラグをオフ。
+    if (this.flag_all_film_finished){
+      this.flag_jumping_now = false;
+    }
   }
 }
 
@@ -1338,7 +1523,6 @@ class MyApp extends StatefulWidget {
   @override
   State<MyApp> createState() => _MyAppState();
 }
-
 
 
 // ✅ こっちが「状態（変数）と処理」を持つ本体
@@ -1405,6 +1589,7 @@ class _MyAppState extends State<MyApp>
     Mode_Game = ScheduleMaking(
       [
         world.receiveInputPlayer, // ユーザーからの入力の判断
+        world.movingDisturberPlayer, // 邪魔者の座標を遷移
         world.movingDisturberPlayer, // 邪魔者の座標を遷移
         world.gameJumpAnimationPlayer, // ユーザの入力に対するジャンプ座標処理
         world.gameoverJudgmentPlayer // ゲームオーバー判断
