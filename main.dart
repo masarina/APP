@@ -102,7 +102,10 @@ class SystemEnvService
   }
 
   static void setTapPosition(Offset pos) {
-    tapPosition = pos;
+    final w = screenSize.width;
+    final h = screenSize.height;
+    // 左上基準 -> センター基準へ変換
+    tapPosition = Offset(pos.dx - w / 2, pos.dy - h / 2);
   }
 
   static void clearTap() {
@@ -249,8 +252,6 @@ class AnimationFilmService {
   // ============================================
   // ★ インデックス管理用（軽量化ポイント）
   // ============================================
-  static int currentIndex = 0;
-
   static
   (
     String newFrameResult,
@@ -258,6 +259,7 @@ class AnimationFilmService {
     List<dynamic> newList2D,
     int newWaitTime,
     int? newEndTime,
+    int newCurrentIndex,
     bool isFilmEmpty
   )
   runAnimationFilm(
@@ -267,33 +269,26 @@ class AnimationFilmService {
     List<dynamic> list2d,
     int waitTime,
     int? endTime,
+    int currentIndex,   // ← 追加
 
   ) {
 
-    // ============================================
-    // 待機開始
-    // ============================================
     if (endTime == null){
-
       int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       endTime = now_time + waitTime;
     }
 
-    // ============================================
-    // 経過チェック
-    // ============================================
     int now_time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     if (endTime <= now_time) {
 
       endTime = null;
 
-      // removeAtせず、インデックスで読む
       if (frameResult == "ok" && animationFilm3DList.isNotEmpty) {
 
         if (currentIndex < animationFilm3DList.length) {
           list2d = animationFilm3DList[currentIndex];
-          currentIndex++;
+          currentIndex++;   // ← プレイヤー専用インデックス
         }
       }
 
@@ -316,9 +311,11 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
+      currentIndex,   // ← 返す
       currentIndex >= animationFilm3DList.length
     );
   }
+
 }
 
 
@@ -888,7 +885,7 @@ class InitPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "背景",
       assetPath: "assets/images/kami_free.png",
-      position: Offset.zero, // 左上ぴったり
+      position: Offset.zero,
       width: screenSize.width,
       height: screenSize.height,
     );
@@ -914,8 +911,8 @@ class HomeInitPlayer extends SuperPlayer {
     final screenSize = SystemEnvService.screenSize;
 
     // 真ん中下にアノアノ
-    double bias_x = (screenSize.width / 2) + 70;
-    double bias_y = (screenSize.height / 2) + 70;
+    double bias_x = 70;
+    double bias_y = 70;
     ObjectCreator.createImage(
       objectName: "アノアノ右目",
       assetPath: "assets/images/nikkori.png",
@@ -961,7 +958,10 @@ class HomeInitPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "スタートボタン",
       assetPath: "assets/images/start.png",
-      position: Offset(screenSize.width / 2, screenSize.height * (9/10)),
+      position: Offset(
+        0,
+        screenSize.height * 0.4 - screenSize.height / 2,
+      ),
       width: 70,
       height: 70,
       enableCollision: true,
@@ -1016,8 +1016,9 @@ class GameStoryPlayer extends SuperPlayer {
   void init() {
 
     // バイアス座標の作成
-    this.bias_x = (screenSize.width / 2) + 75;
-    this.bias_y = (screenSize.height / 2) + 70;
+    this.bias_x = 75;
+    this.bias_y = 70;
+
 
     // 使用するオブジェクトの用意
     ObjectCreator.createImage(
@@ -1184,12 +1185,12 @@ class GameInitPlayer extends SuperPlayer {
     this.animation_film_3dlist = [
 
         // 空想隠す。
-        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
-         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
-         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ右目"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ口"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toMove]],
+        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+         [world.objects["空想アノアノ右目"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+         [world.objects["空想アノアノ口"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+         [world.objects["空想アノアノ羽"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]],
 
         // 既に存在するゲームオブジェクトを初期位置に移動させる。
         [[world.objects["アノアノ両目_怒"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, false), 0, ObjectManager.toJump],
@@ -1349,7 +1350,7 @@ class MovingDisturverPlayer extends SuperPlayer {
   // 🔵 クラス変数
   // ==============================
   // クラス変数
-  final Offset disturver_reset_position = const Offset(-20, 500);
+  late Offset disturver_reset_position;
   final Offset anoanoBiasOffset = const Offset(200, 500);
   double disturver_speed = 1; // 邪魔者オブジェクトのスピード
 
@@ -1376,6 +1377,13 @@ class MovingDisturverPlayer extends SuperPlayer {
 
   @override
   void init() {
+    final screenSize = SystemEnvService.screenSize;
+
+    disturver_reset_position = Offset(
+      -screenSize.width / 2,
+      screenSize.height / 2,
+    );
+
     // マップPattern１
     this.item_and_disturver_animation_film_3dlist_1 = [
         // 邪魔者の座標を動かす。
@@ -1867,7 +1875,11 @@ class GameOverDisplayPlayer extends SuperPlayer {
     final screenSize = SystemEnvService.screenSize;
     final half = screenSize.width / 2;
 
-    center_down = Offset(half, half + 50);
+    center_down = Offset(
+      0,
+      screenSize.height / 4,
+    );
+
 
     ObjectCreator.createImage(
       objectName: "もう一回やる？ボタン",
@@ -2326,15 +2338,21 @@ class _MyAppState extends State<MyApp>
 // 🖌️ Renderer（ドローコール）
 // ==============================================================
 class WorldRenderer {
+
   static Widget draw() {
+
+    final screenSize = SystemEnvService.screenSize;
+    final centerX = screenSize.width / 2;
+    final centerY = screenSize.height / 2;
+
     return Stack(
       children: world.objects.values.map((obj) {
 
-        // CircleObjectの描写
+        // CircleObject
         if (obj is CircleObject) {
           return Positioned(
-            left: obj.position.dx,
-            top: obj.position.dy,
+            left: centerX + obj.position.dx - obj.size / 2,
+            top:  centerY + obj.position.dy - obj.size / 2,
             child: Container(
               width: obj.size,
               height: obj.size,
@@ -2346,13 +2364,13 @@ class WorldRenderer {
           );
         }
 
-        // ImageObjectの描写
+        // ImageObject
         if (obj is ImageObject) {
           return Positioned(
-            left: obj.position.dx,
-            top: obj.position.dy,
+            left: centerX + obj.position.dx - obj.width / 2,
+            top:  centerY + obj.position.dy - obj.height / 2,
             child: Transform.rotate(
-              angle: obj.rotation, // ← ラジアン
+              angle: obj.rotation,
               child: Image.asset(
                 obj.assetPath,
                 width: obj.width,
@@ -2362,11 +2380,11 @@ class WorldRenderer {
           );
         }
 
-        // GifObjectの描写
+        // GifObject
         if (obj is GifObject) {
           return Positioned(
-            left: obj.position.dx,
-            top: obj.position.dy,
+            left: centerX + obj.position.dx - obj.width / 2,
+            top:  centerY + obj.position.dy - obj.height / 2,
             child: Transform.rotate(
               angle: obj.rotation,
               child: Image.asset(
@@ -2378,7 +2396,6 @@ class WorldRenderer {
           );
         }
 
-        // ★ これが必須
         return const SizedBox.shrink();
       }).toList(),
     );
