@@ -252,8 +252,6 @@ class AnimationFilmService {
   // ============================================
   // ★ インデックス管理用（軽量化ポイント）
   // ============================================
-  static int currentIndex = 0;
-
   static
   (
     String newFrameResult,
@@ -261,17 +259,18 @@ class AnimationFilmService {
     List<dynamic> newList2D,
     int newWaitTime,
     int? newEndTime,
+    int newCurrentIndex,
     bool isFilmEmpty
   )
   runAnimationFilm(
-
     String frameResult,
     List<List<List<dynamic>>> animationFilm3DList,
     List<dynamic> list2d,
     int waitTime,
     int? endTime,
-
+    int currentIndex,   // ★追加
   ) {
+
 
     // ============================================
     // 待機開始
@@ -319,6 +318,7 @@ class AnimationFilmService {
       list2d,
       waitTime,
       endTime,
+      currentIndex,
       currentIndex >= animationFilm3DList.length
     );
   }
@@ -711,7 +711,7 @@ class CircleObject extends WorldObject {
     required this.color,
     required this.size,
     int layer = 0,   // 画面オブジェクトに照射するレイヤ数。
-  }) : super(position) {
+  }) : super(position, layer: layer) {   // ← 修正
     enableCollision = true;
   }
   
@@ -749,7 +749,7 @@ class ImageObject extends WorldObject {
     int layer = 0,   // 画面オブジェクトに照射するレイヤ数。
   })  : collisionOffset = collisionOffset ?? Offset.zero,
         collisionSize = collisionSize ?? Size(width, height),
-        super(position) {
+        super(position, layer: layer) {   // ← 修正
     this.enableCollision = enableCollision;
   }
 
@@ -784,7 +784,7 @@ class GifObject extends WorldObject {
     this.rotation = 0.0,
     bool enableCollision = false,
     int layer = 0, // 画面照射する順番。
-  }) : super(position) {
+  }) : super(position, layer: layer) {   // ← 修正
     this.enableCollision = enableCollision;
   }
 
@@ -890,7 +890,6 @@ class InitPlayer extends SuperPlayer {
   @override
   void init() {
     // 特になし
-    debugPrint("InitPlayerの初期化が完了");
   }
   // 非同期サービスの開始
   
@@ -925,6 +924,8 @@ class InitPlayer extends SuperPlayer {
 
 // ホーム画面初期化モード
 class HomeInitPlayer extends SuperPlayer {
+  bool initialized = false;
+
   // __init__(self)に同じ
   @override
   void init() {
@@ -936,6 +937,10 @@ class HomeInitPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
+
+    if (this.initialized) return;
+    this.initialized = true;
+
     // 材料の定義
     final screenSize = SystemEnvService.screenSize;
 
@@ -1019,11 +1024,19 @@ class HomePlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
+
     // スタートボタンが押されたか判定
-    if (ComponentsService.isClicked(world.objects["スタートボタン"]!)) {
-      this.flag_start_button = true;
+    final button = world.objects["スタートボタン"];
+
+    if (button != null &&
+        ComponentsService.isClicked(button)) {
+
+      debugPrint("🔥 スタートボタンが押されました");
+      flag_start_button = true;
     }
+
   }
+
 }
 
 
@@ -1043,12 +1056,14 @@ class GameStoryPlayer extends SuperPlayer {
   late List<dynamic> list_2d;
   int wait_time = 1;
   int? end_time = null;
+  int currentIndex = 0;   // ★追加
   late List<List<List<dynamic>>> animation_film_3dlist;
 
   // __init__(self)に同じ
   @override
   void init() {
 
+    list_2d = [];          // ★これを追加
     // バイアス座標の作成
     this.bias_x = 75;
     this.bias_y = 70;
@@ -1179,6 +1194,7 @@ class GameStoryPlayer extends SuperPlayer {
           ObjectManager.toJump]
         ]
       ];
+
   }
   
   @override
@@ -1193,13 +1209,15 @@ class GameStoryPlayer extends SuperPlayer {
       this.list_2d,
       this.wait_time,
       this.end_time,
+      this.currentIndex,
     );
     this.frame_result = result.$1;
     this.animation_film_3dlist = result.$2;
     this.list_2d = result.$3;
     this.wait_time = result.$4;
     this.end_time = result.$5;
-    this.flag_story_end = result.$6;
+    this.currentIndex = result.$6;      // ★index保存
+    this.flag_story_end = result.$7;    // ★終了フラグは$7
   }
 }
 
@@ -1216,12 +1234,15 @@ class GameInitPlayer extends SuperPlayer {
   late List<dynamic> list_2d;
   int wait_time = 1;
   int? end_time = null;
+  int currentIndex = 0;   // ★追加
   late List<List<List<dynamic>>> animation_film_3dlist;
   bool flag_all_film_finished = false;
 
   // __init__(self)に同じ
   @override
   void init() {
+
+    list_2d = [];          // ★これを追加
     // アニメーションフィルムの作成
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
@@ -1359,13 +1380,16 @@ class GameInitPlayer extends SuperPlayer {
       this.list_2d,
       this.wait_time,
       this.end_time,
+      this.currentIndex,
     );
     this.frame_result = result.$1;
     this.animation_film_3dlist = result.$2;
     this.list_2d = result.$3;
     this.wait_time = result.$4;
     this.end_time = result.$5;
-    this.flag_all_film_finished = result.$6;
+    this.currentIndex = result.$6;
+    this.flag_all_film_finished = result.$7;
+
   }
 }
 
@@ -1422,6 +1446,7 @@ class MovingDisturverPlayer extends SuperPlayer {
   late List<dynamic> list_2d;
   int wait_time = 1;
   int? end_time = null;
+  int currentIndex = 0;   // ★追加
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1;
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2;
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3;
@@ -1432,6 +1457,7 @@ class MovingDisturverPlayer extends SuperPlayer {
 
   @override
   void init() {
+    list_2d = [];          // ★これを追加
     final screenSize = SystemEnvService.screenSize;
 
     disturver_reset_position = Offset(
@@ -1459,11 +1485,14 @@ class MovingDisturverPlayer extends SuperPlayer {
          [[world.objects["建物_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
           [world.objects["UFO_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
       ];
+    debugPrint("MovingDisturverPlayerの初期化が完了しました。");
   }
 
   @override
   void mainScript() 
   {
+    debugPrint("▶ ${runtimeType} mainScript スタート");
+
     final nowSec =
         DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
@@ -1483,6 +1512,8 @@ class MovingDisturverPlayer extends SuperPlayer {
       // フィルム状態リセット
       frame_result = "ok";
       end_time = null;
+
+      currentIndex = 0;   // ★これがないと前のindexのまま進みます
     }
 
     // ==========================================
@@ -1504,6 +1535,7 @@ class MovingDisturverPlayer extends SuperPlayer {
       list_2d,
       wait_time,
       end_time,
+      currentIndex,
     );
 
     frame_result = result.$1;
@@ -1511,15 +1543,8 @@ class MovingDisturverPlayer extends SuperPlayer {
     list_2d = result.$3;
     wait_time = result.$4;
     end_time = result.$5;
+    currentIndex = result.$6;
 
-    // パターンごとに保存し直す
-    if (currentPattern == 1) {
-      item_and_disturver_animation_film_3dlist_1 = targetFilm;
-    } else if (currentPattern == 2) {
-      item_and_disturver_animation_film_3dlist_2 = targetFilm;
-    } else {
-      item_and_disturver_animation_film_3dlist_3 = targetFilm;
-    }
   }
 }
 
@@ -1548,6 +1573,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   late List<dynamic> list_2d;
   int wait_time = 1;
   int? end_time = null;
+  int currentIndex = 0;   // ★追加
   late List<List<List<dynamic>>> jump_animation_film_3dlist;
   late List<List<List<dynamic>>> more_jump_animation_film_3dlist;
   bool flag_all_film_finished = false;
@@ -1555,7 +1581,8 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   @override
   void init() {
     // 初期化（必要なら後で）
-    
+    list_2d = [];          // ★これを追加
+
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.jump_animation_film_3dlist = [
         // アノアノジャンプ
@@ -1572,6 +1599,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
          [world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150, 0.8, 1, true), 0, ObjectManager.toJump]],
       ];
 
+    debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
   }
 
   @override
@@ -1595,13 +1623,15 @@ class GameJumpAnimationPlayer extends SuperPlayer {
           this.list_2d,
           this.wait_time,
           this.end_time,
+          this.currentIndex, // ★追加
         );
         this.frame_result = result.$1;
         this.more_jump_animation_film_3dlist = result.$2;
         this.list_2d = result.$3;
         this.wait_time = result.$4;
         this.end_time = result.$5;
-        this.flag_all_film_finished = result.$6;
+        this.currentIndex = result.$6;           // ★追加
+        this.flag_all_film_finished = result.$7; // ★$7が完了
 
         // 重複ジャンプなので、「現在の連続ジャンプ数」をインクリメント。
         this.currentJumpCount++;
@@ -1615,13 +1645,16 @@ class GameJumpAnimationPlayer extends SuperPlayer {
           this.list_2d,
           this.wait_time,
           this.end_time,
+          this.currentIndex, // ★追加
         );
+
         this.frame_result = result.$1;
         this.jump_animation_film_3dlist = result.$2;
         this.list_2d = result.$3;
         this.wait_time = result.$4;
         this.end_time = result.$5;
-        this.flag_all_film_finished = result.$6;
+        this.currentIndex = result.$6;           // ★追加
+        this.flag_all_film_finished = result.$7; // ★$7が完了
 
         // 「現在の連続ジャンプ数」を１に強制。
         this.currentJumpCount = 1; 
@@ -1644,13 +1677,15 @@ class GameJumpAnimationPlayer extends SuperPlayer {
           this.list_2d,
           this.wait_time,
           this.end_time,
+          this.currentIndex, // ★追加
         );
         this.frame_result = result.$1;
         this.jump_animation_film_3dlist = result.$2;
         this.list_2d = result.$3;
         this.wait_time = result.$4;
         this.end_time = result.$5;
-        this.flag_all_film_finished = result.$6;
+        this.currentIndex = result.$6;           // ★追加
+        this.flag_all_film_finished = result.$7; // ★$7が完了
       }
 
       // ジャンプ中でもなかった。→何もしない。
@@ -1662,6 +1697,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     if (this.flag_all_film_finished){
       this.flag_jumping_now = false;
     }
+
   }
 }
 
@@ -1740,6 +1776,7 @@ class CollisionGimmickPlayer extends SuperPlayer {
           break;
       }
     }
+
   }
 }
 
@@ -1882,6 +1919,7 @@ class CollisionResolvePlayer extends SuperPlayer {
         );
       }
     }
+
   }
 }
 
@@ -2118,12 +2156,14 @@ class GameOverInputPlayer extends SuperPlayer {
         (hidden_xy.dx, hidden_xy.dy),
       );
     }
+    
   }
 }
 
 
 // ==============================================================
 // 💫 ScheduleMaking（プレイヤーを格納するリスト型自体をこれで作る。）
+// ・各Playerのinit()は、初回モード実行時に実行されます。
 // ==============================================================
 class ScheduleMaking {
   final List<SuperPlayer> players;
@@ -2133,16 +2173,33 @@ class ScheduleMaking {
   ScheduleMaking(this.players);
 
   void doing() {
-    // このApp一番最初の処理であれば、処理。
+
+    // ============================================
+    // 🩵 初期化フェーズ（init）
+    // ============================================
     if (!_initialized) {
       for (final player in players) {
+
+        // --- 水色ログ ---
+        debugPrint(
+          '\x1B[36m[INIT] ${player.runtimeType}\x1B[0m'
+        );
+
         player.init();
       }
       _initialized = true;
     }
 
-    // このモードのplayerのmainをすべて実行。
+    // ============================================
+    // 🔵 メイン処理フェーズ（mainScript）
+    // ============================================
     for (final player in players) {
+
+      // --- 青ログ ---
+      debugPrint(
+        '\x1B[34m[MAIN] ${player.runtimeType}\x1B[0m'
+      );
+
       player.mainScript();
     }
   }
@@ -2171,6 +2228,10 @@ class MyApp extends StatefulWidget {
 // を全部ここに置いてる
 class _MyAppState extends State<MyApp>
     with SingleTickerProviderStateMixin {
+
+  // 前回のnext_scheduleが入ってくる。
+  ScheduleMaking? before_next_schedule; // 最初は null でOK
+  
   // ✅ これは「どのスケジュールを動かすフェーズか」の状態
   String schedule_status = "None";
 
@@ -2261,31 +2322,58 @@ class _MyAppState extends State<MyApp>
     // モード分岐プログラム
     // =============================================================
     // 変数群
-    ScheduleMaking next_schedule = Mode_Init; // nullとかにしたいけど、Dart無理みたいだからしょうがない、、
+    ScheduleMaking? next_schedule;
 
 
+    // --------------------------
     // None の場合
+    // --------------------------
     if (this.schedule_status == "None") {
-      // Appの起動時の処理を実行する。
+
+      // 画面サイズがまだ取れていないなら待機
+      if (SystemEnvService.screenSize == Size.zero) {
+        return;
+      }
+
       next_schedule = Mode_Init;
       this.schedule_status = "App起動時の処理完了";
-    } 
+    }
 
+
+    // --------------------------
     // App起動した
+    // --------------------------
     else if (this.schedule_status == "App起動時の処理完了") 
     {
       next_schedule = Mode_HomeInit;
       this.schedule_status = "ホーム初期化完了";
     }
 
+    // --------------------------
     // ホーム初期化完了した
+    // --------------------------
     else if (this.schedule_status == "ホーム初期化完了")
     {
       next_schedule = Mode_Home;
       this.schedule_status = "ホーム画面";
     }
 
+    // --------------------------
+    // ホーム画面でなにもされていないとき
+    // --------------------------
+    else if (
+          this.schedule_status == "ホーム画面" &&
+          world.homePlayer.flag_start_button == false
+        ) {
+
+      // ホーム画面に遷移（ホーム画面のままでOK）
+      next_schedule = Mode_Home;
+      this.schedule_status = "ホーム画面";
+    }
+
+    // --------------------------
     // ホーム画面でスタートボタンが押された
+    // --------------------------
     else if (
           this.schedule_status == "ホーム画面" &&
           world.homePlayer.flag_start_button == true
@@ -2294,28 +2382,21 @@ class _MyAppState extends State<MyApp>
       // ボタンをもとに戻す。
       world.homePlayer.flag_start_button = false;
 
-      // ゲームを初期化モードに遷移。
-      next_schedule = Mode_GameInit;
-      this.schedule_status = "ホームのスタートがクリックされました。";
-    }
+      // ストーリーモードに遷移。
+      next_schedule = Mode_GameStoryMovie;
+      this.schedule_status = "ゲームストーリーモード";
 
-    // ホーム画面でスタートボタンが押された、
-    else if (
-          this.schedule_status == "ホームのスタートがクリックされました。"
-        ) {
-
-      // ゲーム初期化モードに遷移。
-      next_schedule = Mode_GameInit;
-      this.schedule_status = "ゲーム初期化モード";
-
-      // もしゲームストーリーの視聴がまだならば、ゲームストーリー再生モードへ。
-      if (world.gameStoryPlayer.flag_story_end == false){
-        next_schedule = Mode_GameStoryMovie;
-        this.schedule_status = "ゲームストーリーモード";
+      // もしゲームストーリーの視聴が終わっていたならば、ゲーム初期化モードへ。
+      if (world.gameStoryPlayer.flag_story_end){
+        next_schedule = Mode_GameInit;
+        this.schedule_status = "ゲーム初期化モード";
       }
     }
 
-    // ゲームストーリーが再生し終わった。
+    // --------------------------
+    // ゲームストーリーモードだった。
+    // --------------------------
+    // かつ、ストーリーの再生が終わった
     else if (
           this.schedule_status == "ゲームストーリーモード" &&
           world.gameStoryPlayer.flag_story_end == true
@@ -2325,8 +2406,20 @@ class _MyAppState extends State<MyApp>
       next_schedule = Mode_GameInit;
       this.schedule_status = "ゲーム初期化モード";
     }
+    // まだストーリーが終わっていない
+    else if (
+          this.schedule_status == "ゲームストーリーモード" &&
+          world.gameStoryPlayer.flag_story_end == false
+        ) {
 
+      // ゲームストーリーモードのまま。
+      next_schedule = Mode_GameInit;
+      this.schedule_status = "ゲームストーリーモード";
+    }
+
+    // --------------------------
     // ゲームの初期化が完了した
+    // --------------------------
     else if (
           this.schedule_status == "ゲーム初期化モード"
         ) {
@@ -2335,7 +2428,9 @@ class _MyAppState extends State<MyApp>
       this.schedule_status = "ゲームモード";
     }
 
+    // --------------------------
     // ゲームが終了した
+    // --------------------------
     else if (
           this.schedule_status == "ゲームモード" &&
           world.gameoverJudgmentPlayer.flag_gameover == true
@@ -2348,7 +2443,9 @@ class _MyAppState extends State<MyApp>
       world.gameoverJudgmentPlayer.flag_gameover = false;
     }
 
+    // --------------------------
     // ゲーム終了画面で「もう一度やる」ボタンが押された
+    // --------------------------
     else if (
       this.schedule_status == "ゲームオーバーモード" &&
       world.gameOverInputPlayer.flag_one_more_start_button == true
@@ -2360,16 +2457,44 @@ class _MyAppState extends State<MyApp>
       this.schedule_status = "ゲームを初期化しました。";
     }
 
-
-
     // =============================================================
     // 選択されたモードを実行
     // なお、各Playerで実行されている内容は
     // world.objects Map の描写書き換えであり、
     // 次のsetState()内のdraw()実行により、ようやく反映されます。
     // =============================================================
-    next_schedule.doing(); // このスケジュールの実行。
+    // next_scheduleが前回と異なるかどうかの比較
+    final same_before_schedule_mode = (next_schedule == before_next_schedule);
 
+    if (next_schedule != null) {
+      if (!same_before_schedule_mode){ // next_scheduleが前回と一緒でなければ、`開始・終了`を表示。
+        debugPrint("\n\x1B[35m==== スケジュールモード【${this.schedule_status}】を開始します ============================\x1B[0m");
+      }
+      
+      // =============================================================
+      // このスケジュールを実行。
+      // =============================================================
+      next_schedule.doing(); 
+
+      if (!same_before_schedule_mode){
+        debugPrint("\x1B[35m==== スケジュールモード【${this.schedule_status}】を終了します ============================\x1B[0m\n");
+      }
+    }
+    else {
+      // =============================================================
+      // エラーハンドリング
+      // =============================================================
+      if (!same_before_schedule_mode){
+        debugPrint("\x1B[35m==== 【 ❣❣モード分岐に誤りがあります❣❣ 】============================\x1B[0m");
+        debugPrint("\x1B[35m====（next_schedule: ${next_schedule}） ============================\x1B[0m");
+        debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
+      }
+    }
+
+    // =============================================================
+    // 前回実行されたモードの保持。
+    // =============================================================
+    before_next_schedule = next_schedule; // null もそのまま保持でOK
 
     // ✅ setState() は「ねぇFlutter、画面を作り直して！」の合図
     // （≒ドローコールの実行）
@@ -2383,13 +2508,10 @@ class _MyAppState extends State<MyApp>
   // =============================================================
   @override
   Widget build(BuildContext context) {
-    /*
-      update()で更新されたworld.objects Mapをdrawする。
-      build() は “今のworldの状態を表示する” だけ、という方向でいこう。
-    */
 
     // =============================================================
-    // 端末データの取得（ここでしか取得できないので、しょうがない。）
+    // 📱 端末情報の取得
+    // build() 内でしか MediaQuery は安全に取得できない
     // =============================================================
     final size = MediaQuery.of(context).size;
     final orientation = MediaQuery.of(context).orientation;
@@ -2399,26 +2521,28 @@ class _MyAppState extends State<MyApp>
       orientation: orientation,
     );
 
-    return MaterialApp(
-      // ✅ MaterialApp：アプリ全体の枠（テーマ/画面遷移などの土台）
-      home: Scaffold(
-        // ✅ Scaffold：1画面の土台（背景、body、AppBarなどを置ける）
-        backgroundColor: const Color.fromARGB(255, 56, 179, 144),
+    // =============================================================
+    // 🎨 画面の描画
+    // MaterialApp は main() 側へ移動済み
+    // ここでは Scaffold だけを返す
+    // =============================================================
+    return Scaffold(
+      backgroundColor: Colors.black,
 
-        // ✅ body：この画面の“中身”
-        // 下のdraw()を呼び出している。
-        body: GestureDetector(
-          onTapDown: (details) {
-            SystemEnvService.setTouching(true);
-            SystemEnvService.setTapPosition(details.localPosition);
-          },
-          onTapUp: (_) => SystemEnvService.setTouching(false),
-          onTapCancel: () => SystemEnvService.setTouching(false),
-          child: WorldRenderer.draw(),
-        ),
+      body: GestureDetector(
+        onTapDown: (details) {
+          SystemEnvService.setTouching(true);
+          SystemEnvService.setTapPosition(details.localPosition);
+        },
+        onTapUp: (_) => SystemEnvService.setTouching(false),
+        onTapCancel: () => SystemEnvService.setTouching(false),
+
+        // update()で更新された world.objects を描画する
+        child: WorldRenderer.draw(),
       ),
     );
   }
+
 
   // dispose()：この画面が破棄されるとき（アプリ終了/画面移動など）に呼ばれる
   @override
@@ -2509,27 +2633,20 @@ class WorldRenderer {
 // 🖤 Flutter App（ここが「アプリの入口」＆「画面の土台」）
 // ==============================================================
 void main() {
-  // ✅ Flutterアプリを起動する“スイッチ”。
-  //
-  // プログラムが起動したら
-  // Flutterを立ち上げて
-  // 「MyApp という画面構造」を
-  // アプリとして表示しなさい。
-  //
-  // runApp() に渡した Widget（= 画面部品ツリーの根っこ）から画面が作られる
-  runApp(const MyApp()); // runApp
-                         // → Flutterが用意している関数。
-                         // → 「画面を表示する処理を開始する」ためのもの。
-                         //
-                         // 【流れ】
-                         // runApp(MyApp)
-                         //   ↓
-                         // Flutterエンジン起動
-                         //   ↓
-                         // 画面ツリー（Widgetツリー）作成
-                         //   ↓
-                         // OSの画面に表示
+
+  // =============================================================
+  // ✅ MaterialApp を最外層に配置
+  // これで毎フレーム再生成されなくなる
+  // =============================================================
+  runApp(
+    const MaterialApp(
+      home: MyApp(),
+      debugShowCheckedModeBanner: false,
+    ),
+  );
 }
+
+
 
 
 
