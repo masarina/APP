@@ -476,6 +476,32 @@ class ObjectManager {
     return "ok";
   }
 
+
+  // ==============================
+  // 回転を加算する（度で指定）
+  // ==============================
+  static String toAddRotationDeg(
+    WorldObject obj,
+    (
+      num addDegree,
+    ) params,
+  ) {
+    final (addDegreeRaw,) = params;
+
+    final addDegree = _toDouble(addDegreeRaw);
+    final addRad = addDegree * pi / 180;
+
+    if (obj is ImageObject) {
+      obj.rotation += addRad;
+    }
+    else if (obj is GifObject) {
+      obj.rotation += addRad;
+    }
+
+    return "ok";
+  }
+
+
   // ==============================
   // 別オブジェクトの座標をコピー
   // ==============================
@@ -953,7 +979,6 @@ class HomeInitPlayer extends SuperPlayer {
       width: 30,
       height: 30,
       layer: 100, // 表示順番
-      rotation: pi, // pi → 180。0,
     );
     ObjectCreator.createImage(
       objectName: "アノアノ左目",
@@ -962,7 +987,6 @@ class HomeInitPlayer extends SuperPlayer {
       width: 30,
       height: 30,
       layer: 101, // 表示順番
-      rotation: pi, // pi → 180。0,
     );
     ObjectCreator.createImage(
       objectName: "アノアノ口",
@@ -1035,11 +1059,11 @@ class HomePlayer extends SuperPlayer {
     // 初期位置に移動
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
-        // アノアノを設置
+        // アノアノをにっこり顔で設置
         [[world.objects["アノアノ輪郭"], (this.bias_x, this.bias_y), 0, ObjectManager.toSetPosition],
-         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset], // OK
-         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 17, 30), 0, ObjectManager.toFollowWithOffset]],
+         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 9, 0), 0, ObjectManager.toFollowWithOffset], // OK
+         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, -7, 0), 0, ObjectManager.toFollowWithOffset], // OK
+         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]], // OK
 
         // スタートボタンを設置
         [[world.objects["スタートボタン"], (0, 180), 0, ObjectManager.toSetPosition]],
@@ -1199,6 +1223,13 @@ class GameStoryPlayer extends SuperPlayer {
     this.animation_film_3dlist = [
         // スタートボタンの退避
         [[world.objects["スタートボタン"], (-1000.0, -1000.0), 0, ObjectManager.toSetPosition]],
+
+        // アノアノを、かわいい想像顔にする。
+        [[world.objects["アノアノ右目"], (180,), 0, ObjectManager.toAddRotationDeg], // 180度回転してにっこりにする。
+         [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toAddRotationDeg], // 180度回転してにっこりにする。
+         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset], // OK
+         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset], // OK
+         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]], // OK
 
         // 空想もこもこ表示
         [[world.objects["ちいさいまる"], (this.bias_x, this.bias_y), 1, ObjectManager.toSetPosition]],
