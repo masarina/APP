@@ -797,74 +797,84 @@ class GifObject extends WorldObject {
 オブジェクトの型を用いた、オブジェクトクリエイター群。
 */
 class ObjectCreator {
-  // 円型のオブジェクト
+
+  // ============================================================
+  // 🔵 円型オブジェクト生成
+  // ============================================================
   static void createCircle({
-    required String objectName,
-    required Color color,
-    required Offset position,
-    required double size,
+    required String objectName,   // world.objects に登録するキー名
+    required Color color,         // 円の色
+    required Offset position,     // 画面中心基準の座標
+    required double size,         // 円の直径
   }) {
     final circle = CircleObject(
-      position: position,
-      color: color,
-      size: size,
+      position: position,         // 表示位置
+      color: color,               // 描画色
+      size: size,                 // 大きさ
     );
-    world.objects[objectName] = circle;
+    world.objects[objectName] = circle;  // worldに登録
   }
 
-  // 静止画オブジェクト
-  static void createImage({
-    required String objectName,
-    required String assetPath,
-    required Offset position,
-    required double width,
-    required double height,
-    double rotation = 0.0,
 
-    bool enableCollision = false,
-    Offset? collisionOffset,
-    Size? collisionSize,
-    int layer = 0,   // 表示順番
+  // ============================================================
+  // 🖼 静止画オブジェクト生成
+  // ============================================================
+  static void createImage({
+    required String objectName,   // world.objects に登録するキー名
+    required String assetPath,    // 表示する画像ファイルのパス
+    required Offset position,     // 画面中心基準の座標
+    required double width,        // 画像の横幅
+    required double height,       // 画像の縦幅
+    double rotation = 0.0,        // 回転角（ラジアン）
+
+    bool enableCollision = false, // 当たり判定を有効にするか
+    Offset? collisionOffset,      // 当たり判定の中心ズレ調整
+    Size? collisionSize,          // 当たり判定のサイズ
+    int layer = 0,                // 描画順（大きいほど手前）
   }) {
     final image = ImageObject(
-      position: position,
-      assetPath: assetPath,
-      width: width,
-      height: height,
-      rotation: rotation,
-      enableCollision: enableCollision,
-      collisionOffset: collisionOffset,
-      collisionSize: collisionSize,
-      layer: layer,  // 表示順番
+      position: position,           // 表示位置
+      assetPath: assetPath,         // 画像パス
+      width: width,                 // 横幅
+      height: height,               // 縦幅
+      rotation: rotation,           // 回転角
+      enableCollision: enableCollision, // 当たり判定ON/OFF
+      collisionOffset: collisionOffset, // 判定位置補正
+      collisionSize: collisionSize,     // 判定サイズ
+      layer: layer,                 // 表示順
     );
 
-    world.objects[objectName] = image;
+    world.objects[objectName] = image;  // worldに登録
   }
 
-  // アニメーションオブジェクト
+
+  // ============================================================
+  // 🎞 GIFアニメーションオブジェクト生成
+  // ============================================================
   static void createGIF({
-    required String objectName,
-    required List<String> assetPaths,
-    required Offset position,
-    required double width,
-    required double height,
-    double rotation = 0.0, // ← 追加
-    bool enableCollision = false,
-    int layer = 0,   // 表示順番
+    required String objectName,     // world.objects に登録するキー名
+    required List<String> assetPaths, // フレーム画像のパス一覧
+    required Offset position,       // 画面中心基準の座標
+    required double width,          // 表示横幅
+    required double height,         // 表示縦幅
+    double rotation = 0.0,          // 回転角（ラジアン）
+    bool enableCollision = false,   // 当たり判定を有効にするか
+    int layer = 0,                  // 描画順（大きいほど手前）
   }) {
     final gif = GifObject(
-      position: position,
-      assetPaths: assetPaths,
-      width: width,
-      height: height,
-      rotation: rotation,         // ← 渡す
-      enableCollision: enableCollision,
-      layer: layer,  // 表示順番
+      position: position,             // 表示位置
+      assetPaths: assetPaths,         // アニメーションフレーム一覧
+      width: width,                   // 横幅
+      height: height,                 // 縦幅
+      rotation: rotation,             // 回転角
+      enableCollision: enableCollision, // 当たり判定ON/OFF
+      layer: layer,                   // 表示順
     );
-    world.objects[objectName] = gif;
-  }
 
+    world.objects[objectName] = gif;  // worldに登録
+  }
 }
+
 
 
 // ==============================================================
@@ -913,6 +923,7 @@ class InitPlayer extends SuperPlayer {
 // ホーム画面初期化モード
 class HomeInitPlayer extends SuperPlayer {
   bool initialized = false;
+  double hidden_xy = -10000;
 
   // __init__(self)に同じ
   @override
@@ -933,34 +944,30 @@ class HomeInitPlayer extends SuperPlayer {
     final screenSize = SystemEnvService.screenSize;
 
     // 真ん中下にアノアノ
-    double bias_x = 70;
-    double bias_y = 70;
+    double bias_x = 130;
+    double bias_y = 300;
     ObjectCreator.createImage(
       objectName: "アノアノ右目",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(bias_x, bias_y), // 左上ぴったり
+      position: Offset(bias_x + 200, bias_y + 200),
       width: 30,
       height: 30,
       layer: 100, // 表示順番
+      rotation: pi, // pi → 180。0,
     );
     ObjectCreator.createImage(
       objectName: "アノアノ左目",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(
-          bias_x - 3, 
-          bias_y + 2
-        ), 
+      position: Offset(bias_x, bias_y), 
       width: 30,
       height: 30,
       layer: 101, // 表示順番
+      rotation: pi, // pi → 180。0,
     );
     ObjectCreator.createImage(
       objectName: "アノアノ口",
       assetPath: "assets/images/nikkori.png",
-      position: Offset(
-          bias_x - 20, 
-          bias_y + 20
-        ), 
+      position: Offset(bias_x, bias_y), 
       width: 30,
       height: 30,
       rotation: pi, // pi → 180。0,
@@ -969,13 +976,9 @@ class HomeInitPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "アノアノ輪郭",
       assetPath: "assets/images/kao_rinnkaku_1.png",
-      position: Offset(
-          bias_x - 5, 
-          bias_y + 5
-        ), 
-      width: 30,
-      height: 30,
-      rotation: pi, // pi → 180。0,
+      position: Offset(bias_x, bias_y + 5), 
+      width: 60,
+      height: 60,
       enableCollision: true,
       layer: 103, // 表示順番
     );
@@ -984,12 +987,9 @@ class HomeInitPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "スタートボタン",
       assetPath: "assets/images/start.png",
-      position: Offset(
-        0,
-        screenSize.height * 0.4 - screenSize.height / 2,
-      ),
-      width: 70,
-      height: 70,
+      position: Offset(hidden_xy, hidden_xy,),
+      width: 200,
+      height: 200,
       enableCollision: true,
       layer: 200, // 表示順番
     );
@@ -1000,18 +1000,78 @@ class HomeInitPlayer extends SuperPlayer {
 
 // ホーム画面プレイヤー
 class HomePlayer extends SuperPlayer {
+  // =============================================
+  // スタートボタンが押されるまで待機する場所
+  // =============================================
+
+  // ---------------------------------------- 
   // class変数
+  // ---------------------------------------- 
+  // スタートボタンflag
   bool flag_start_button = false;
+  final screenSize = SystemEnvService.screenSize;
+
+  // アノアノの位置（ホーム画面に置ける位置。）
+  double bias_x = -150;
+  double bias_y = 100;
+
+  // アニメーションフィルム用キャッシュ
+  String frame_result = "ok";
+  List<dynamic> list_2d = [];
+  int wait_time = 1;
+  int? end_time = null;
+  int currentIndex = 0;   // ★追加
+  late List<List<List<dynamic>>> animation_film_3dlist;
+  bool film_end = false;
+
 
   // __init__(self)に同じ
   @override
   void init() {
-    // 特になし
+
+    // ============================================
+    // アニメーションフィルムの作成
+    // ============================================
+    // 初期位置に移動
+    // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
+    this.animation_film_3dlist = [
+        // アノアノを設置
+        [[world.objects["アノアノ輪郭"], (this.bias_x, this.bias_y), 0, ObjectManager.toSetPosition],
+         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset], // OK
+         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
+         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 17, 30), 0, ObjectManager.toFollowWithOffset]],
+
+        // スタートボタンを設置
+        [[world.objects["スタートボタン"], (0, 180), 0, ObjectManager.toSetPosition]],
+      ];
   }
   
   @override
   void mainScript() 
   {
+
+    // ============================================
+    // もしオブジェクト配置がまだならば、配置させる。
+    // アノアノを定位置に移動させ、
+    // スタートボタンを配置する。
+    // ============================================
+    if (!this.film_end){
+      final result = AnimationFilmService.runAnimationFilm(
+        this.frame_result,
+        this.animation_film_3dlist,
+        this.list_2d,
+        this.wait_time,
+        this.end_time,
+        this.currentIndex,
+      );
+      this.frame_result = result.$1;
+      this.animation_film_3dlist = result.$2;
+      this.list_2d = result.$3;
+      this.wait_time = result.$4;
+      this.end_time = result.$5;
+      this.currentIndex = result.$6;      // ★index保存
+      this.film_end = result.$7;    // ★終了フラグは$7
+    }
 
     // スタートボタンが押されたか判定
     final button = world.objects["スタートボタン"];
@@ -1153,7 +1213,7 @@ class GameStoryPlayer extends SuperPlayer {
          [world.objects["空想アノアノ羽"], (world.objects["空想アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
         
         // 現実アノアノが本気の顔になる
-        [[world.objects["アノアノ両目_怒"], world.objects["アノアノ右目"], 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
+        [[world.objects["アノアノ両目_怒"], (world.objects["アノアノ右目"]!,), 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
          [world.objects["アノアノ両目_怒"], (5, 0), 0, ObjectManager.toMove], // 時間指定意味ないが、気休めに０を代入。
          [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
          [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 1, ObjectManager.toSetPosition]], // 目を退避
@@ -2388,7 +2448,7 @@ class _MyAppState extends State<MyApp>
         ) {
 
       // ゲームストーリーモードのまま。
-      next_schedule = Mode_GameInit;
+      next_schedule = Mode_GameStoryMovie;
       this.schedule_status = "ゲームストーリーモード";
     }
 
