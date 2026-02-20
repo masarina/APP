@@ -1913,6 +1913,8 @@ class GameInitPlayer extends SuperPlayer {
   final Offset hiddenOffset = const Offset(-10000, -10000);
   final Offset anoanoBiasOffset = const Offset(200, 500);
   bool flag_object_created = false;
+  double ufo_size = 30;
+  double tatemono_size = 30;
 
   // フィルム再生用キャッシュ
   String frame_result = "ok";
@@ -1970,8 +1972,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/tatemono_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: tatemono_size,
+        height: tatemono_size,
         enableCollision: true,
         layer: 401, // 表示順番
       );
@@ -1983,8 +1985,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/ufo_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: this.ufo_size,
+        height: this.ufo_size,
         enableCollision: true,
         layer: 402, // 表示順番
       );
@@ -1996,8 +1998,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/tatemono_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: this.tatemono_size,
+        height: this.tatemono_size,
         enableCollision: true,
         layer: 403, // 表示順番
       );
@@ -2009,8 +2011,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/ufo_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: this.ufo_size,
+        height: this.ufo_size,
         enableCollision: true,
         layer: 404, // 表示順番
       );
@@ -2022,8 +2024,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/tatemono_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: this.tatemono_size,
+        height: this.tatemono_size,
         enableCollision: true,
         layer: 405, // 表示順番
       );
@@ -2035,8 +2037,8 @@ class GameInitPlayer extends SuperPlayer {
             "assets/images/ufo_2.png",
           ],
         position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: 500,
-        height: 1000,
+        width: this.ufo_size,
+        height: this.ufo_size,
         enableCollision: true,
         layer: 406, // 表示順番
       );
@@ -2044,7 +2046,7 @@ class GameInitPlayer extends SuperPlayer {
       // ============================================
       // アイテムオブジェクトの生成（見えないところに。）
       // ============================================
-      // UFO
+      // 羽。
       ObjectCreator.createGIF(
         objectName: "アイテム_羽_1",
         assetPaths: [
@@ -2147,7 +2149,7 @@ class MovingDisturverPlayer extends SuperPlayer {
   // クラス変数
   late Offset disturver_reset_position;
   final Offset anoanoBiasOffset = const Offset(200, 500);
-  double disturver_speed = 1; // 邪魔者オブジェクトのスピード
+  double disturver_speed = 50; // 邪魔者オブジェクトのスピード
 
   // 障害物マップを切り替えるの、秒数処理
   int lastSwitchTimeSec = 0;
