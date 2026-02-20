@@ -730,6 +730,112 @@ class ObjectManager {
     return "ok";
   }
 
+
+  // ============================================================
+  // 🪄 任意オブジェクトへジャンプ（着地バイアス対応版）
+  // 自分自身を指定すればその場ジャンプ可能
+  // ============================================================
+  static String toJumpToObject(
+    WorldObject obj,
+    (
+      WorldObject targetObj, // 着地先オブジェクト
+      num offsetX,           // 着地Xバイアス
+      num offsetY,           // 着地Yバイアス
+      num jumpPower,
+      num durationSec,
+      int maxJumpCount,
+      bool flag_more_jump
+    ) params,
+  ) {
+
+    final (
+      targetObj,
+      offsetXRaw,
+      offsetYRaw,
+      jumpPowerRaw,
+      durationSecRaw,
+      maxJumpCount,
+      flag_more_jump
+    ) = params;
+
+    final offsetX = _toDouble(offsetXRaw);
+    final offsetY = _toDouble(offsetYRaw);
+    final jumpPower = _toDouble(jumpPowerRaw);
+    final durationSec = _toDouble(durationSecRaw);
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // ⭐ ジャンプ開始時に着地点を固定（＋バイアス）
+    final double fixedTargetX =
+        targetObj.position.dx + offsetX;
+
+    final double fixedTargetY =
+        targetObj.position.dy + offsetY;
+
+    if (!_jumpingObjects.containsKey(obj)) {
+
+      _jumpingObjects[obj] = _JumpData(
+        startX: obj.position.dx,
+        startY: obj.position.dy,
+        landingX: fixedTargetX,
+        landingY: fixedTargetY,
+        startTimeMs: now,
+        jumpCount: 1,
+      );
+
+    } else {
+
+      final data = _jumpingObjects[obj]!;
+
+      if (flag_more_jump &&
+          data.jumpCount < maxJumpCount) {
+
+        data.startY = obj.position.dy;
+        data.startTimeMs = now;
+        data.jumpCount += 1;
+      }
+    }
+
+    final data = _jumpingObjects[obj]!;
+
+    final elapsedSec =
+        (now - data.startTimeMs) / 1000.0;
+
+    final progress =
+        (elapsedSec / durationSec).clamp(0.0, 1.0);
+
+    final newX =
+        data.startX +
+        (data.landingX - data.startX) * progress;
+
+    final baseY =
+        data.startY +
+        (data.landingY - data.startY) * progress;
+
+    final height =
+        4 *
+        jumpPower *
+        progress * (1 - progress);
+
+    final newY = baseY - height;
+
+    if (progress >= 1.0) {
+
+      obj.position =
+          Offset(data.landingX, data.landingY);
+
+      _jumpingObjects.remove(obj);
+
+      if (_jumpingObjects.isEmpty) {
+        resetAllJumpData();
+      }
+
+      return "ok";
+    }
+
+    obj.position = Offset(newX, newY);
+    return "running";
+  }
   
 
   // ============================================================
@@ -1632,6 +1738,7 @@ class GameStoryPlayer extends SuperPlayer {
       width: 1100,
       height: 1100,
       layer: 301, // 表示順番
+      enableCollision: true, // ★これ
     );
     ObjectCreator.createImage(
       objectName: "ちいさいまる",
@@ -1756,7 +1863,7 @@ class GameStoryPlayer extends SuperPlayer {
         // 現実アノアノが高ぶるいする（ちょっと2回ジャンプする。）
         [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
                                         world.objects["着地地点"]!.position.dy,
-                                        jump_height,
+                                        80.0,
                                         jump_time, 
                                         1, 
                                         false),0,ObjectManager.toJump]],
@@ -2028,9 +2135,6 @@ class ReceiveInputPlayer extends SuperPlayer {
     // ------------------------------
     isTouching = SystemEnvService.isTouching;
     tapPosition = SystemEnvService.tapPosition;
-    
-    // 入力flagの削除
-    SystemEnvService.clearTap();
   }
 }
 
@@ -2196,17 +2300,13 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.jump_animation_film_3dlist = [
         // アノアノジャンプ
-        [[world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150.0, 0.8, 1, false), 0, ObjectManager.toJump],
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump]],
       ];
 
     // 重複ジャンプ用
     this.more_jump_animation_film_3dlist = [
         // アノアノジャンプ
-        [[world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150.0, 0.8, 1, true), 0, ObjectManager.toJump],
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, true), 0, ObjectManager.toJump]],
       ];
 
     debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
@@ -2424,7 +2524,6 @@ class CollisionResolvePlayer extends SuperPlayer {
 
   @override
   void mainScript() {
-
     // ==========================================================
     // 🎮 プレイヤー（アノアノ輪郭）取得
     // ==========================================================
@@ -2445,7 +2544,32 @@ class CollisionResolvePlayer extends SuperPlayer {
     // NORTH（上から接触）のオブジェクトのみ抽出する。
     // 実際の着地補正は toFall に任せる。
     // ==========================================================
-    final List<WorldObject> groundList = [];
+    // 🧱 床候補は “重なっている物” ではなく “床になり得る物” 全部
+    final List<WorldObject> groundList = [
+      world.objects["地面"],     // ← もし使うなら
+      world.objects["建物_1"],
+      world.objects["建物_2"],
+      world.objects["建物_3"],
+      world.objects["UFO_1"],
+      world.objects["UFO_2"],
+      world.objects["UFO_3"],
+    ].whereType<WorldObject>()
+    .where((o) => o.enableCollision)
+    .toList();
+
+    // 💥 ゲームオーバー判定は hitList を見て行う（これは今の設計のままでOK）
+    for (final hit in hitList) {
+      final side = hit.$2;
+
+      if (side == HitSide.south ||
+          side == HitSide.west  ||
+          side == HitSide.east) {
+        world.gameoverJudgmentPlayer.flag_gameover = true;
+      }
+    }
+
+
+
 
     for (final hit in hitList) {
 
@@ -2487,7 +2611,7 @@ class CollisionResolvePlayer extends SuperPlayer {
     // ==========================================================
     final bool shouldFall =
         !jumpPlayer.flag_jumping_now &&
-        jumpPlayer.currentJumpCount >= jumpPlayer.maxJumpCount;
+        !jumpPlayer.isGrounded;
 
     if (shouldFall) {
 
