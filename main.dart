@@ -118,22 +118,71 @@ class SystemEnvService
 // 🎬 アニメーション辞書クラス
 // ============================================================
 class AnimationDict {
+  static double hidden_xy = -10000.0;
+
+  // ----------------------------------------------------------
+  // 🧩 引数に複数二次元リストを取り、
+  // すべてをまとめて一つの二次元リストに変換するメソッド
+  // ----------------------------------------------------------
+  static List<List<dynamic>> match2d(
+      List<List<List<dynamic>>> lists) {
+    return lists.expand((e) => e).toList();
+  }
 
   // ----------------------------------------------------------
   // 🗂 アニメーションテンプレート辞書
   // ----------------------------------------------------------
   static final Map<String, List<List<dynamic>>> _dict = {
 
-    // ========================================================
-    // 😊 ニコニコ笑顔
-    // ========================================================
+    "もこもこ全解除": [
+      [world.objects["ちいさいまる"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["ちいさいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["おおきいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc] // 追従の解除
+    ],
+
+    "もこもこ全隠し": [
+      [world.objects["ちいさいまる"], (hidden_xy, hidden_xy), 0, ObjectManager.toMove], //
+      [world.objects["ちいさいもこもこ"], (hidden_xy, hidden_xy), 0, ObjectManager.toMove], //
+      [world.objects["おおきいもこもこ"], (hidden_xy, hidden_xy), 0, ObjectManager.toMove] //
+    ],
+
+    "表情追従全解除": [
+      [world.objects["アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["アノアノ口"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["アノアノ両目_怒"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["空想アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["空想アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["空想アノアノ口"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+      [world.objects["空想アノアノ羽"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc] // 追従の解除
+    ],
+
+    "表情全隠し": [
+      [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["アノアノ口"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["アノアノ両目_怒"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["空想アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["空想アノアノ左目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["空想アノアノ口"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["空想アノアノ羽"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition] // 目を退避
+    ],
+
+    "真剣顔": [
+      [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 11, 2), 0, ObjectManager.toFollowWithOffset], // 顔の輪郭に追従させる。
+      [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 1, ObjectManager.toSetPosition], // 目を退避
+      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]
+    ],
+
     "ニコニコ笑顔": [
       [world.objects["アノアノ右目"], (180,), 0, ObjectManager.toAddRotationDeg],
       [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toAddRotationDeg],
       [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset],
       [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
-      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]
     ],
+
     "羽アノアノ": [
       [world.objects["空想アノアノ右目"], (world.objects["空想アノアノ輪郭"]!, -4, 2), 0, ObjectManager.toFollowWithOffset],
       [world.objects["空想アノアノ左目"], (world.objects["空想アノアノ輪郭"]!, 15, 2), 0, ObjectManager.toFollowWithOffset],
@@ -663,7 +712,7 @@ class ObjectManager {
   // 🧹 指定オブジェクトの running タスクを “関数指定” で解除
   // 例：追従だけ解除したい → toFollowWithOffset を渡す
   // ============================================================
-  static void clearRunningTaskByFunc(
+  static String clearRunningTaskByFunc(
     WorldObject obj,
     (
       Function func,
@@ -677,6 +726,8 @@ class ObjectManager {
         identical(t.obj, obj) &&
         identical(t.func, func)
     );
+
+    return "ok";
   }
 
   
@@ -837,6 +888,169 @@ class ObjectManager {
     obj.position = Offset(newX, newY);
     return "running";
   }
+
+
+  // ============================================================
+  // 2オブジェクト間 直線移動（速度指定）
+  // ============================================================
+  static String toLinearMoveBetweenObjects(
+    WorldObject obj,
+    (
+      WorldObject startObj,
+      WorldObject endObj,
+      num speedPerSec
+    ) params,
+  ) {
+
+    final (
+      startObj,
+      endObj,
+      speedRaw
+    ) = params;
+
+    final speed = _toDouble(speedRaw);
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final startX = startObj.position.dx;
+    final startY = startObj.position.dy;
+    final targetX = endObj.position.dx;
+    final targetY = endObj.position.dy;
+
+    // ------------------------------------------
+    // 距離計算
+    // ------------------------------------------
+    final dx = targetX - startX;
+    final dy = targetY - startY;
+
+    final distance = sqrt(dx * dx + dy * dy);
+
+    // 速度0防止
+    if (speed <= 0) {
+      obj.position = Offset(targetX, targetY);
+      return "ok";
+    }
+
+    final durationSec = distance / speed;
+
+    // ------------------------------------------
+    // 初回登録
+    // ------------------------------------------
+    if (!_movingObjects.containsKey(obj)) {
+      _movingObjects[obj] = _MoveData(
+        startX: startX,
+        startY: startY,
+        targetX: targetX,
+        targetY: targetY,
+        startTimeMs: now,
+      );
+    }
+
+    final data = _movingObjects[obj]!;
+
+    final elapsedSec =
+        (now - data.startTimeMs) / 1000.0;
+
+    final progress =
+        (elapsedSec / durationSec).clamp(0.0, 1.0);
+
+    final newX =
+        data.startX +
+        (data.targetX - data.startX) * progress;
+
+    final newY =
+        data.startY +
+        (data.targetY - data.startY) * progress;
+
+    if (progress >= 1.0) {
+      obj.position = Offset(data.targetX, data.targetY);
+      _movingObjects.remove(obj);
+      return "ok";
+    }
+
+    obj.position = Offset(newX, newY);
+    return "running";
+  }
+
+
+  // ============================================================
+  // 横移動専用（開始地点・到着地点をオブジェクトで指定）
+  // 到着地点は、オブジェクトのx座標で停止。
+  // ============================================================
+  static String moveToObjectToX(
+    WorldObject obj,
+    (
+      WorldObject startObj,
+      WorldObject targetObj,
+      num speedPerSec
+    ) params,
+  ) {
+
+    final (
+      startObj,
+      targetObj,
+      speedRaw
+    ) = params;
+
+    final speed = _toDouble(speedRaw);
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final startX = startObj.position.dx;
+    final startY = startObj.position.dy;
+    final targetX = targetObj.position.dx;
+
+    // ------------------------------------------
+    // 初回登録
+    // ------------------------------------------
+    if (!_movingObjects.containsKey(obj)) {
+
+      // 開始地点へ強制セット
+      obj.position = Offset(startX, startY);
+
+      _movingObjects[obj] = _MoveData(
+        startX: startX,
+        startY: startY,
+        targetX: targetX,
+        targetY: startY, // Y固定
+        startTimeMs: now,
+      );
+    }
+
+    final data = _movingObjects[obj]!;
+
+    final distance = (data.targetX - data.startX).abs();
+
+    if (speed <= 0) {
+      obj.position = Offset(data.targetX, data.startY);
+      _movingObjects.remove(obj);
+      return "ok";
+    }
+
+    final durationSec = distance / speed;
+
+    final elapsedSec =
+        (now - data.startTimeMs) / 1000.0;
+
+    final progress =
+        (elapsedSec / durationSec).clamp(0.0, 1.0);
+
+    final newX =
+        data.startX +
+        (data.targetX - data.startX) * progress;
+
+    final newY = data.startY; // Y固定
+
+    if (progress >= 1.0) {
+      obj.position = Offset(data.targetX, data.startY);
+      _movingObjects.remove(obj);
+      return "ok";
+    }
+
+    obj.position = Offset(newX, newY);
+    return "running";
+  }
+
 
   // ============================================================
   // ⬇ 落下メソッド（複数地面対応版）
@@ -1188,7 +1402,7 @@ class InitPlayer extends SuperPlayer {
   
   // 最初に用意するオブジェクトと、それらの配置。
   @override
-  void mainScript() 
+  void mainScript()
   {
     // 画面サイズが取得できていない場合は、背景作れないので、パス。
     if (SystemEnvService.screenSize == Size.zero) {
@@ -1208,7 +1422,7 @@ class InitPlayer extends SuperPlayer {
         layer: 0, // 一番奥
       );
 
-      // debugPrint("背景を作りました。");
+      debugPrint("背景を作りました。");
       this.background_created = true;
     }
   }
@@ -1372,7 +1586,7 @@ class HomePlayer extends SuperPlayer {
     if (button != null &&
         ComponentsService.isClicked(button)) {
 
-      // debugPrint("🔥 スタートボタンが押されました");
+      debugPrint("🔥 スタートボタンが押されました");
       flag_start_button = true;
     }
 
@@ -1527,26 +1741,16 @@ class GameStoryPlayer extends SuperPlayer {
         [[world.objects["空想アノアノ輪郭"], (world.objects["おおきいもこもこ"]!, 0, 0), 0, ObjectManager.toFollowWithOffset]],
         AnimationDict.get("羽アノアノ"),
 
-        // // 空想全部退避。
-        [[world.objects["空想アノアノ輪郭"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["空想アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["空想アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["空想アノアノ口"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["空想アノアノ羽"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["ちいさいまる"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["ちいさいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["おおきいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["ちいさいまる"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
-         [world.objects["ちいさいもこもこ"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
-         [world.objects["おおきいもこもこ"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
-         [world.objects["空想アノアノ輪郭"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
-         [world.objects["空想アノアノ右目"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ左目"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ口"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
-         [world.objects["空想アノアノ羽"], (this.hidden_xy, this.hidden_xy), 1, ObjectManager.toMove]],
-
-        // 現実アノアノが目をつむってちょっと考える。
-        AnimationDict.get("ニコニコ笑顔"),
+        // 空想全部退避。
+        AnimationDict.match2d([ // この中に入れた二次元リストはすべてまとめられ、一つの二次元リストになる。
+            AnimationDict.get("もこもこ全解除"),
+            AnimationDict.get("表情追従全解除"),
+            AnimationDict.get("もこもこ全隠し"),
+            AnimationDict.get("表情全隠し"),
+            AnimationDict.get("ニコニコ笑顔") // 表情も変える。現実アノアノが目をつむってちょっと考える。
+        ]),
+        
+        // 四秒待機用。
         [[world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 4, ObjectManager.toFollowWithOffset]],
         
         // 現実アノアノが高ぶるいする（ちょっと2回ジャンプする。）
@@ -1565,14 +1769,10 @@ class GameStoryPlayer extends SuperPlayer {
                                         false),0,ObjectManager.toJump]],
 
         // 現実アノアノが本気の顔になる
-        [[world.objects["アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
-         [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 11, 2), 0, ObjectManager.toFollowWithOffset], // 顔の輪郭に追従させる。
-         [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
-         [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 1, ObjectManager.toSetPosition]], // 目を退避
-
+        AnimationDict.get("表情追従全解除"),
+        AnimationDict.get("表情全隠し"),
+        AnimationDict.get("真剣顔")
       ];
-
   }
   
   @override
@@ -1621,28 +1821,32 @@ class GameInitPlayer extends SuperPlayer {
   void init() {
 
     list_2d = [];          // ★これを追加
+
     // アニメーションフィルムの作成
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
 
-        // 空想隠す。
-        [[world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-         [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-         [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-         [world.objects["空想アノアノ輪郭"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-         [world.objects["空想アノアノ右目"], (world.objects["空想アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["空想アノアノ口"], (world.objects["空想アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["空想アノアノ羽"], (world.objects["空想アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
+        AnimationDict.match2d([ // この中に入れた二次元リストは、一つの二次元リストに変換されます。
+          // 空想隠す。
+          [
+           [world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+           [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+           [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]
+          ],
 
-        // 既に存在するゲームオブジェクトを初期位置に移動させる。
-        [[world.objects["アノアノ輪郭"], (this.anoanoBiasOffset.dx, this.anoanoBiasOffset.dy, 150.0, 0.8, 1, false), 0, ObjectManager.toJump],
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
-      ];  
+          // 一旦表情全解除        
+          AnimationDict.get("表情追従全解除"), 
+
+          // 既に存在するゲームオブジェクトを初期位置に移動させる。
+          [
+           [world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump],
+           [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
+           [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]
+          ]
+        ])
+    ];
   }
   // 非同期サービスの開始
-  // debugPrint
-
   
   @override
   void mainScript() 
@@ -1769,7 +1973,6 @@ class GameInitPlayer extends SuperPlayer {
     this.end_time = result.$5;
     this.currentIndex = result.$6;
     this.flag_all_film_finished = result.$7;
-
   }
 }
 
@@ -1785,7 +1988,36 @@ class ReceiveInputPlayer extends SuperPlayer {
 
   @override
   void init() {
-    // 初期化（必要なら後で）
+    // =============================================
+    // オブジェクトの用意
+    // =============================================
+    // 障害物出発地点
+    ObjectCreator.createImage(
+      objectName: "障害物出発地点",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(450, 100),
+      width: 250,
+      height: 120,
+      layer: 600, // 表示順番
+    );
+    // 障害物出発地点
+    ObjectCreator.createImage(
+      objectName: "障害物出発地点_ランダム",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(450, 100),
+      width: 250,
+      height: 120,
+      layer: 600, // 表示順番
+    );
+    // 障害物終点
+    ObjectCreator.createImage(
+      objectName: "障害物終点",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(-400, 100),
+      width: 250,
+      height: 120,
+      layer: 600, // 表示順番
+    );
   }
 
   @override
@@ -1848,30 +2080,29 @@ class MovingDisturverPlayer extends SuperPlayer {
     // マップPattern１
     this.item_and_disturver_animation_film_3dlist_1 = [
         // 邪魔者の座標を動かす。
-        [[world.objects["建物_1"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
-         [world.objects["UFO_1"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
+        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX]],
       ];  
 
     // マップPattern２
     this.item_and_disturver_animation_film_3dlist_2 = [
         // 邪魔者の座標を動かす。
-        [[world.objects["建物_2"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
-         [world.objects["UFO_2"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
+        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX]],
       ];  
 
     // マップPattern３
     this.item_and_disturver_animation_film_3dlist_3 = [
         // 邪魔者の座標を動かす。
-         [[world.objects["建物_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove],
-          [world.objects["UFO_3"], (this.disturver_reset_position.dx, this.disturver_reset_position.dy, disturver_speed), 1, ObjectManager.toLinearMove]],
-      ];
-    // debugPrint("MovingDisturverPlayerの初期化が完了しました。");
+        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX]],
+      ];  
   }
 
   @override
   void mainScript() 
   {
-    // debugPrint("▶ ${runtimeType} mainScript スタート");
+    debugPrint("▶ ${runtimeType} mainScript スタート");
 
     final nowSec =
         DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -1924,7 +2155,6 @@ class MovingDisturverPlayer extends SuperPlayer {
     wait_time = result.$4;
     end_time = result.$5;
     currentIndex = result.$6;
-
   }
 }
 
@@ -1979,7 +2209,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
          [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
       ];
 
-    // debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
+    debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
   }
 
   @override
@@ -2551,7 +2781,7 @@ class ScheduleMaking {
       for (final player in players) {
 
         // --- 水色ログ ---
-        // debugPrint('\x1B[36m[INIT] ${player.runtimeType}\x1B[0m');
+        debugPrint('\x1B[36m[INIT] ${player.runtimeType}\x1B[0m');
 
         player.init();
       }
@@ -2564,7 +2794,7 @@ class ScheduleMaking {
     for (final player in players) {
 
       // --- 青ログ ---
-      // debugPrint('\x1B[34m[MAIN] ${player.runtimeType}\x1B[0m');
+      debugPrint('\x1B[34m[MAIN] ${player.runtimeType}\x1B[0m');
 
       player.mainScript();
     }
@@ -2799,6 +3029,20 @@ class _MyAppState extends State<MyApp>
     }
 
     // --------------------------
+    // ゲームモードでかつ、
+    // ゲームオーバーflagが立ってい
+    // なければ、ゲームモードを継続
+    // --------------------------
+    else if (
+          this.schedule_status == "ゲームモード" &&
+          world.gameoverJudgmentPlayer.flag_gameover == false
+        ) {
+
+      next_schedule = Mode_Game;
+      this.schedule_status = "ゲームモード";
+    }
+
+    // --------------------------
     // ゲームが終了した
     // --------------------------
     else if (
@@ -2838,7 +3082,7 @@ class _MyAppState extends State<MyApp>
 
     if (next_schedule != null) {
       if (!same_before_schedule_mode){ // next_scheduleが前回と一緒でなければ、`開始・終了`を表示。
-        // debugPrint("\n\x1B[35m==== スケジュールモード【${this.schedule_status}】を開始します ============================\x1B[0m");
+        debugPrint("\n\x1B[35m==== スケジュールモード【${this.schedule_status}】を開始します ============================\x1B[0m");
       }
       
       // =============================================================
@@ -2847,7 +3091,7 @@ class _MyAppState extends State<MyApp>
       next_schedule.doing(); 
 
       if (!same_before_schedule_mode){
-        // debugPrint("\x1B[35m==== スケジュールモード【${this.schedule_status}】を終了します ============================\x1B[0m\n");
+        debugPrint("\x1B[35m==== スケジュールモード【${this.schedule_status}】を終了します ============================\x1B[0m\n");
       }
     }
     else {
@@ -2855,9 +3099,9 @@ class _MyAppState extends State<MyApp>
       // エラーハンドリング
       // =============================================================
       if (!same_before_schedule_mode){
-        // debugPrint("\x1B[35m==== 【 ❣❣モード分岐に誤りがあります❣❣ 】============================\x1B[0m");
-        // debugPrint("\x1B[35m====（next_schedule: ${next_schedule}） ============================\x1B[0m");
-        // debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
+        debugPrint("\x1B[35m==== 【 ❣❣モード分岐に誤りがあります❣❣ 】============================\x1B[0m");
+        debugPrint("\x1B[35m====（next_schedule: ${next_schedule}） ============================\x1B[0m");
+        debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
       }
     }
 
