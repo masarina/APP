@@ -114,6 +114,46 @@ class SystemEnvService
 }
 
 
+// ============================================================
+// 🎬 アニメーション辞書クラス
+// ============================================================
+class AnimationDict {
+
+  // ----------------------------------------------------------
+  // 🗂 アニメーションテンプレート辞書
+  // ----------------------------------------------------------
+  static final Map<String, List<List<dynamic>>> _dict = {
+
+    // ========================================================
+    // 😊 ニコニコ笑顔
+    // ========================================================
+    "ニコニコ笑顔": [
+      [world.objects["アノアノ右目"], (180,), 0, ObjectManager.toAddRotationDeg],
+      [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toAddRotationDeg],
+      [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset],
+    ],
+    "羽アノアノ": [
+      [world.objects["空想アノアノ右目"], (world.objects["空想アノアノ輪郭"]!, -4, 2), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["空想アノアノ左目"], (world.objects["空想アノアノ輪郭"]!, 15, 2), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["空想アノアノ口"], (world.objects["空想アノアノ輪郭"]!, 25, 34), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["空想アノアノ羽"], (world.objects["空想アノアノ輪郭"]!, -25, -5), 3, ObjectManager.toFollowWithOffset]
+    ],
+  };
+
+  // ----------------------------------------------------------
+  // 🎁 取得メソッド
+  // ----------------------------------------------------------
+  static List<List<dynamic>> get(String key) {
+    if (!_dict.containsKey(key)) {
+      throw Exception("AnimationDict に [$key] は存在しません");
+    }
+    return _dict[key]!;
+  }
+}
+
+
 // ==============================================================
 // コンポーネントサービス
 // (ゲーム世界の「意味のある判断」をする場所)
@@ -429,6 +469,14 @@ class ObjectManager {
   // 戻り値が"running"のリストを保持するリスト。（この中にjump等の、‘毎フレーム実行必須‘モノが格納される。）
   static final List<_RunningTask> _runningTasks = [];
 
+  // ==============================
+  // 🔄 ジャンプ管理を完全リセット
+  // ==============================
+  static void resetAllJumpData() {
+    _jumpingObjects.clear();
+  }
+
+
   // ============================================================
   // 🔵 数値安全変換ヘルパー
   // int / double どちらが来ても double に変換する
@@ -665,6 +713,7 @@ class ObjectManager {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     if (!_jumpingObjects.containsKey(obj)) {
+      // ⭐ 常に今の位置を開始地点にする
       _jumpingObjects[obj] = _JumpData(
         startX: obj.position.dx,
         startY: obj.position.dy,
@@ -673,6 +722,7 @@ class ObjectManager {
         startTimeMs: now,
         jumpCount: 1,
       );
+
     }
     else {
       final data = _jumpingObjects[obj]!;
@@ -714,12 +764,19 @@ class ObjectManager {
           Offset(data.landingX, data.landingY);
 
       _jumpingObjects.remove(obj);
+
+      // ⭐ 念のため全体クリア（安全設計）
+      if (_jumpingObjects.isEmpty) {
+        resetAllJumpData();
+      }
+
       return "ok";
     }
 
     obj.position = Offset(newX, newY);
     return "running";
   }
+
 
   // ============================================================
   // 直線移動メソッド（一定速度）
@@ -879,12 +936,43 @@ class ObjectManager {
   }
 
   static void updateRunningTasks() {
+    // ============================
+    // runningリスト内のメソッドを
+    // 実行するメソッド。なお、
+    // 追従メソッドは、最後に実行する
+    // ことで、追従がフレームずれ
+    // 起こさないようにしている。
+    // ============================
 
-    _runningTasks.removeWhere((task) {
-      final result =
-          task.func(task.obj, task.value);
-      return result == "ok";
-    });
+    // ---------------------------
+    // ① ジャンプ系タスクを先に実行
+    // ---------------------------
+    for (final task in List<_RunningTask>.from(_runningTasks)) {
+
+      if (task.func == toJump) {
+
+        final result = task.func(task.obj, task.value);
+
+        if (result == "ok") {
+          _runningTasks.remove(task);
+        }
+      }
+    }
+
+    // ---------------------------
+    // ② その他タスク（追従など）
+    // ---------------------------
+    for (final task in List<_RunningTask>.from(_runningTasks)) {
+
+      if (task.func != toJump) {
+
+        final result = task.func(task.obj, task.value);
+
+        if (result == "ok") {
+          _runningTasks.remove(task);
+        }
+      }
+    }
   }
 }
 
@@ -1324,6 +1412,14 @@ class GameStoryPlayer extends SuperPlayer {
 
     // 使用するオブジェクトの用意
     ObjectCreator.createImage(
+      objectName: "地面",
+      assetPath: "assets/images/jimenn.png",
+      position: Offset(this.hidden_xy, this.hidden_xy),
+      width: 1100,
+      height: 1100,
+      layer: 301, // 表示順番
+    );
+    ObjectCreator.createImage(
       objectName: "ちいさいまる",
       assetPath: "assets/images/maru_tiisai.png",
       position: Offset(this.hidden_xy, this.hidden_xy),
@@ -1351,101 +1447,130 @@ class GameStoryPlayer extends SuperPlayer {
       objectName: "空想アノアノ右目",
       assetPath: "assets/images/nikkori.png",
       position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 150,
-      height: 150,
+      width: 40,
+      height: 40,
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ左目",
       assetPath: "assets/images/nikkori.png",
       position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 150,
-      height: 150,
+      width: 40,
+      height: 40,
       layer: 304, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "空想アノアノ口",
       assetPath: "assets/images/nikkori.png",
       position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 150,
-      height: 150,
+      width: 25,
+      height: 25,
       rotation: pi, // pi → 180。
       layer: 305, // 表示順番
+    );
+    ObjectCreator.createImage(
+      objectName: "空想アノアノ輪郭",
+      assetPath: "assets/images/kao_rinnkaku_2.png",
+      position: Offset(this.hidden_xy, this.hidden_xy),
+      width: 80,
+      height: 80,
+      layer: 306, // 表示順番
     );
     ObjectCreator.createGIF(
       objectName: "空想アノアノ羽",
       assetPaths: ["assets/images/hane_1.png","assets/images/hane_2.png"],
       position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 50,
-      height: 50,
-      layer: 306, // 表示順番
-    );
-    ObjectCreator.createGIF(
-      objectName: "空想アノアノ輪郭",
-      assetPaths: ["assets/images/kao_rinnkaku_2.png","assets/images/kao_rinnkaku_1.png"],
-      position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 150,
-      height: 150,
-      layer: 306, // 表示順番
+      width: 60,
+      height: 60,
+      rotation: 0.5, // pi → 180。
+      layer: 307, // 表示順番
     );
     ObjectCreator.createImage(
       objectName: "アノアノ両目_怒",
       assetPath: "assets/images/me_sikame.png",
       position: Offset(this.hidden_xy, this.hidden_xy),
-      width: 50,
-      height: 50,
+      width: 30,
+      height: 30,
       layer: 307, // 表示順番
     );
+    ObjectCreator.createImage(
+      objectName: "着地地点",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(-150, 100),
+      width: 30,
+      height: 30,
+      layer: 101, // 表示順番
+    );
+
 
     // アニメーションフィルムの作成
-    double jump_height = 3.0;
-    double jump_time = 0.05;
+    double jump_height = 50.0;
+    double jump_time = 0.5;
 
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
         // スタートボタンの退避
         [[world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition]],
 
-        // アノアノを、かわいい想像顔にする。
-        [[world.objects["アノアノ右目"], (180,), 0, ObjectManager.toAddRotationDeg], // 180度回転してにっこりにする。
-         [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toAddRotationDeg], // 180度回転してにっこりにする。
-         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset], // 180回転したので座標を調節
-         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset], // 180回転したので座標を調節
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]], // 口も一応。
+        // 地面を配置
+        [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
 
         // アノアノを左側にジャンプさせる。
-        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump],
-         [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset], // OK
-         [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset], // OK
-         [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]], // OK
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump]],
         
         // 空想もこもこ表示
         [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, this.hidden_xy, this.hidden_xy), 1, ObjectManager.toFollowWithOffset]], // １秒待機用
         [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, 50, -50), 1, ObjectManager.toFollowWithOffset]],
         [[world.objects["ちいさいもこもこ"], (world.objects["アノアノ輪郭"]!, 100, -100), 1, ObjectManager.toFollowWithOffset]],
-        [[world.objects["おおきいもこもこ"], (world.objects["アノアノ輪郭"]!, 170, -300), 1, ObjectManager.toFollowWithOffset]],
+        [[world.objects["おおきいもこもこ"], (world.objects["アノアノ輪郭"]!, 150, -300), 1, ObjectManager.toFollowWithOffset]],
         
         // 空想アノアノの出現
-        [[world.objects["空想アノアノ輪郭"], (world.objects["おおきいもこもこ"]!, 0, 0), 0, ObjectManager.toFollowWithOffset],
-        //  [world.objects["空想アノアノ右目"], (world.objects["空想アノアノ輪郭"]!, 0, 0), 0, ObjectManager.toFollowWithOffset],
-        //  [world.objects["空想アノアノ左目"], (world.objects["空想アノアノ輪郭"]!, 0, 0), 0, ObjectManager.toFollowWithOffset],
-        //  [world.objects["空想アノアノ口"], (world.objects["空想アノアノ輪郭"]!, 0, 0), 0, ObjectManager.toFollowWithOffset],
-         [world.objects["空想アノアノ羽"], (world.objects["空想アノアノ輪郭"]!, 0, 0), 0, ObjectManager.toFollowWithOffset]],
+        [[world.objects["空想アノアノ輪郭"], (world.objects["おおきいもこもこ"]!, 0, 0), 0, ObjectManager.toFollowWithOffset]],
+        AnimationDict.get("羽アノアノ"),
+
+        // // 空想全部退避。
+        [[world.objects["空想アノアノ輪郭"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["空想アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["空想アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["空想アノアノ口"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["空想アノアノ羽"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["ちいさいまる"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["ちいさいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["おおきいもこもこ"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["ちいさいまる"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
+         [world.objects["ちいさいもこもこ"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
+         [world.objects["おおきいもこもこ"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
+         [world.objects["空想アノアノ輪郭"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove], //
+         [world.objects["空想アノアノ右目"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ左目"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ口"], (this.hidden_xy, this.hidden_xy), 0, ObjectManager.toMove],
+         [world.objects["空想アノアノ羽"], (this.hidden_xy, this.hidden_xy), 1, ObjectManager.toMove]],
+
+        // 現実アノアノが目をつむってちょっと考える。
+        AnimationDict.get("ニコニコ笑顔"),
+        [[world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 4, ObjectManager.toFollowWithOffset]],
         
-        // // 現実アノアノが本気の顔になる
-        // [[world.objects["アノアノ両目_怒"], (world.objects["アノアノ右目"]!,), 0, ObjectManager.toCopyPosition], // 時間指定意味ないが、気休めに０を代入。
-        //  [world.objects["アノアノ両目_怒"], (5, 0), 0, ObjectManager.toMove], // 時間指定意味ないが、気休めに０を代入。
-        //  [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
-        //  [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 1, ObjectManager.toSetPosition]], // 目を退避
-        
-        // // 現実アノアノが高ぶるいする（ちょっと2回ジャンプする。）
-        // [[world.objects["アノアノ輪郭"], (world.objects["アノアノ輪郭"]!.position.dx, 
-        //                                 world.objects["アノアノ輪郭"]!.position.dy, 
-        //                                 jump_height,
-        //                                 jump_time, 
-        //                                 1, 
-        //                                 false),0,ObjectManager.toJump],
-        //  [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-        //  [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]],
+        // 現実アノアノが高ぶるいする（ちょっと2回ジャンプする。）
+        [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
+                                        world.objects["着地地点"]!.position.dy,
+                                        jump_height,
+                                        jump_time, 
+                                        1, 
+                                        false),0,ObjectManager.toJump]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 1, ObjectManager.toJump]],
+        [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
+                                        world.objects["着地地点"]!.position.dy,
+                                        80.0,
+                                        jump_time, 
+                                        1, 
+                                        false),0,ObjectManager.toJump]],
+
+        // 現実アノアノが本気の顔になる
+        [[world.objects["アノアノ右目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["アノアノ左目"], (ObjectManager.toFollowWithOffset,), 0, ObjectManager.clearRunningTaskByFunc], // 追従の解除
+         [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 11, 2), 0, ObjectManager.toFollowWithOffset], // 顔の輪郭に追従させる。
+         [world.objects["アノアノ右目"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition], // 目を退避
+         [world.objects["アノアノ左目"], (hidden_xy, hidden_xy), 1, ObjectManager.toSetPosition]], // 目を退避
+
       ];
 
   }
@@ -2564,24 +2689,11 @@ class _MyAppState extends State<MyApp>
     // =============================================================
 
     // 🎞 GIF更新（エンジンフレーム同期）
-    SystemEnvService.startGif(frameIntervalMs: 1000);
+    SystemEnvService.startGif(frameIntervalMs: 501);
 
     // 変数群
     ScheduleMaking? next_schedule;
 
-    // --------------------------
-    // アニメーションフィルム内の
-    // funcの戻り値が"running"
-    // だったものは、
-    // ObjectManegerの
-    // クラス変数（リスト型）に
-    // 保持されているため、
-    // その`runningリスト`が
-    // 空でない限り、
-    // そのリスト内のすべての行を
-    // １回実行するメソッド。
-    // --------------------------
-    ObjectManager.updateRunningTasks();
 
     // --------------------------
     // None の場合
@@ -2748,6 +2860,27 @@ class _MyAppState extends State<MyApp>
         // debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
       }
     }
+
+    // --------------------------
+    // アニメーションフィルム内の
+    // funcの戻り値が"running"
+    // だったものは、
+    // ObjectManegerの
+    // クラス変数（リスト型）に
+    // 保持されているため、
+    // その`runningリスト`が
+    // 空でない限り、
+    // そのリスト内のすべての行を
+    // １回実行するメソッド。
+    // 
+    // 【注意】
+    // next_schedule.doing(); より
+    // 後に実行しなければ、追従メソ
+    // ッドがずれてしまう。（まぁ
+    // ここでもすこし追従がずれるん
+    // だけどさ。）
+    // --------------------------
+    ObjectManager.updateRunningTasks();
 
     // =============================================================
     // 前回実行されたモードの保持。
