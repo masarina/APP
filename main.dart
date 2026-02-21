@@ -183,6 +183,15 @@ class AnimationDict {
       [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]
     ],
 
+    "悲しい顔": [
+      [world.objects["アノアノ右目"], (180,), 0, ObjectManager.toAddRotationDeg],
+      [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toAddRotationDeg],
+      [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ口"], (180,), 0, ObjectManager.toAddRotationDeg],
+    ],
+
     "羽アノアノ": [
       [world.objects["空想アノアノ右目"], (world.objects["空想アノアノ輪郭"]!, -4, 2), 0, ObjectManager.toFollowWithOffset],
       [world.objects["空想アノアノ左目"], (world.objects["空想アノアノ輪郭"]!, 15, 2), 0, ObjectManager.toFollowWithOffset],
@@ -348,8 +357,7 @@ class AnimationFilmService {
     int? newEndTime,
     int newCurrentIndex,
     bool isFilmEmpty
-  )
-  runAnimationFilm(
+  ) runAnimationFilm(
     String frameResult,
     List<List<List<dynamic>>> animationFilm3DList,
     List<dynamic> list2d,
@@ -2142,48 +2150,79 @@ class ReceiveInputPlayer extends SuperPlayer {
 
 
 // 邪魔者の座標を更新
+// ---------------------------------------------
+// 🏃‍♂️ MovingDisturverPlayer（じゃまものを動かす係）
+// ・建物やUFOみたいな「ぶつかるやつ」を動かすよ
+// ・一定時間ごとに「動かし方のパターン」を切り替えるよ
+// ---------------------------------------------
 class MovingDisturverPlayer extends SuperPlayer {
   // ==============================
   // 🔵 クラス変数
   // ==============================
   // クラス変数
+  // 🏁 disturver_reset_position：じゃまものを「出発させる場所（予備）」だよ
+  // ※今のコードでは作ってるけど、まだ直接は使ってない（未来用）
   late Offset disturver_reset_position;
+  // 🧍‍♂️ anoanoBiasOffset：主人公の基準位置っぽい（ここでは未使用）
   final Offset anoanoBiasOffset = const Offset(200, 500);
-  double disturver_speed = 50; // 邪魔者オブジェクトのスピード
+  // 💨 disturver_speed：じゃまものが動く速さ（1秒あたり）
+  double disturver_speed = 200; // 邪魔者オブジェクトのスピード
 
   // 障害物マップを切り替えるの、秒数処理
+  // ⏰ lastSwitchTimeSec：最後にパターンを変えた「秒」
   int lastSwitchTimeSec = 0;
+  // ⏲ switchIntervalSec：何秒ごとに切り替えるか（今は3秒）
   int switchIntervalSec = 3; // 3秒ごとに切り替える
+  // 🧩 currentPattern：いま使ってるパターン番号（1〜3）
   int currentPattern = 1;
 
 
   // ==============================
   // フィルム再生用キャッシュ
   // ==============================
+  // 🎞 frame_result：フィルムの1コマが終わったかの状態（"ok" or "running"）
   String frame_result = "ok";
+  // 📦 list_2d：いま実行中の「2次元リスト（1コマぶん）」の箱
   late List<dynamic> list_2d;
+  // ⌛ wait_time：次のコマに進むまで待つ秒数（フィルム用）
   int wait_time = 1;
+  // 🕰 end_time：待機が終わる予定の時刻（秒）
   int? end_time = null;
+  // 🔢 currentIndex：3Dリストの「いま何コマ目？」（これ超大事）
   int currentIndex = 0;   // ★追加
+  // 🧱 patternごとのフィルム（3Dリスト）
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1;
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2;
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3;
+  // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool item_and_disturver_animation_film_3dlist_1_end = false;
   bool item_and_disturver_animation_film_3dlist_2_end = false;
   bool item_and_disturver_animation_film_3dlist_3_end = false;
+  // ✅ 全部終わったか（今は使ってないけど、将来の拡張用）
   bool flag_all_film_finished = false;
 
   @override
   void init() {
+    // 🧺 list_2d を空っぽで用意しておく（null事故防止）
     list_2d = [];          // ★これを追加
+    // 📱 画面サイズを取る（出発位置の計算に使う）
     final screenSize = SystemEnvService.screenSize;
 
+    // 🏁 じゃまものの「初期の出発っぽい位置」を作る
+    // ・画面の左端のさらに左（ -width/2 ）
+    // ・画面の下側（ height/2 ）
     disturver_reset_position = Offset(
       -screenSize.width / 2,
       screenSize.height / 2,
     );
 
     // マップPattern１
+    // ---------------------------------------------
+    // 🧩 パターン1の「動かし方」
+    // ・建物_1 と UFO_1 を動かす
+    // ・moveToObjectToX：スタート地点に置いて、ターゲットのXまでスライドする
+    // ・待ち時間(ここでは 1 )が入ってるので、フィルム的には「1秒ごとに更新」寄りになる
+    // ---------------------------------------------
     this.item_and_disturver_animation_film_3dlist_1 = [
         // 邪魔者の座標を動かす。
         [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
@@ -2191,6 +2230,11 @@ class MovingDisturverPlayer extends SuperPlayer {
       ];  
 
     // マップPattern２
+    // ---------------------------------------------
+    // 🧩 パターン2の「動かし方」
+    // ※いまは中身がパターン1と同じ（つまり見た目は変わらない）
+    // 今後「建物_2」「UFO_2」を動かす等に増やすと、切替の意味が出るよ
+    // ---------------------------------------------
     this.item_and_disturver_animation_film_3dlist_2 = [
         // 邪魔者の座標を動かす。
         [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
@@ -2198,6 +2242,11 @@ class MovingDisturverPlayer extends SuperPlayer {
       ];  
 
     // マップPattern３
+    // ---------------------------------------------
+    // 🧩 パターン3の「動かし方」
+    // ※これも今はパターン1と同じ
+    // だから「currentPatternが変わっても挙動が同じ」に見える可能性がある
+    // ---------------------------------------------
     this.item_and_disturver_animation_film_3dlist_3 = [
         // 邪魔者の座標を動かす。
         [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 1, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
@@ -2208,36 +2257,47 @@ class MovingDisturverPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
+    // 🐾 デバッグ用ログ：このPlayerが毎フレーム呼ばれてるか確認できる
     debugPrint("▶ ${runtimeType} mainScript スタート");
 
+    // ⏱ 今の時刻（ミリ秒→秒にしてる）
     final nowSec =
         DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     // ==========================================
     // 🔄 一定秒数ごとにパターン切替
     // ==========================================
+    // 「いまの秒 - 前に切り替えた秒」が3秒以上なら、パターンを進める
     if (nowSec - lastSwitchTimeSec >= switchIntervalSec) {
 
+      // 📝 最後に切り替えた時間を更新
       lastSwitchTimeSec = nowSec;
 
+      // ➕ パターン番号を1つ進める
       currentPattern++;
 
+      // 🔁 3を超えたら1に戻す（1→2→3→1→...）
       if (currentPattern > 3) {
         currentPattern = 1;
       }
 
       // フィルム状態リセット
+      // 🧼 これをしないと「前のフィルムの続き」になって変な動きになる
       frame_result = "ok";
+      // 🧼 待機終了予定もリセット（次のコマの待ちをやり直す）
       end_time = null;
 
+      // 🧼 これ超重要：コマ番号を0に戻す（じゃないと途中から再生する）
       currentIndex = 0;   // ★これがないと前のindexのまま進みます
     }
 
     // ==========================================
     // 🎬 現在のパターンを実行
     // ==========================================
+    // 🧺 いま使うフィルムを入れる箱（あとでrunAnimationFilmに渡す）
     List<List<List<dynamic>>> targetFilm;
 
+    // 🧩 どのパターンのフィルムを使うか選ぶ
     if (currentPattern == 1) {
       targetFilm = item_and_disturver_animation_film_3dlist_1;
     } else if (currentPattern == 2) {
@@ -2246,6 +2306,9 @@ class MovingDisturverPlayer extends SuperPlayer {
       targetFilm = item_and_disturver_animation_film_3dlist_3;
     }
 
+    // 🎞 フィルムを1回ぶん進める
+    // ・待機が終わったら次のコマを取り出して実行
+    // ・"running" が返った動きは ObjectManager の runningTasks に登録される
     final result = AnimationFilmService.runAnimationFilm(
       frame_result,
       targetFilm,
@@ -2255,7 +2318,9 @@ class MovingDisturverPlayer extends SuperPlayer {
       currentIndex,
     );
 
+    // 🧾 返ってきた「更新後の状態」をちゃんと保存する（これを忘れると進まない）
     frame_result = result.$1;
+    // 🧺 targetFilm はローカル変数だけど、一応返り値を受け取ってる（仕様上）
     targetFilm = result.$2;
     list_2d = result.$3;
     wait_time = result.$4;
@@ -2414,24 +2479,50 @@ class GameJumpAnimationPlayer extends SuperPlayer {
 }
 
 
-// オブジェクト同士が衝突していたら、衝突flagを作るプレイヤー
+// ===============================================
+// 💥 CollisionGimmickPlayer（ぶつかったか調べる係）
+// -----------------------------------------------
+// ここは「当たった？」を調べるだけのクラスだよ。
+// ぶつかったら「だれに」「どっちから」ぶつかったかをメモする。
+// ===============================================
 class CollisionGimmickPlayer extends SuperPlayer {
 
-  // 今回の衝突オブジェクトの一覧
-  // [衝突obj, 衝突方向]
+  // -----------------------------------------------
+  // 📝 hitList（ぶつかったメモ帳）
+  // -----------------------------------------------
+  // ここに「ぶつかった相手」と「ぶつかった向き」を入れるよ。
+  // 例）(UFO_1, north) みたいな感じ。
   late List<(WorldObject, HitSide)> hitList;
 
+  // -----------------------------------------------
+  // 🌱 init（さいしょに1回だけやる準備）
+  // -----------------------------------------------
   @override
   void init() {
+    // まずは空っぽのメモ帳をつくるよ
     hitList = [];
   }
 
+  // -----------------------------------------------
+  // 🔁 mainScript（毎フレームずーっとやる仕事）
+  // -----------------------------------------------
   @override
   void mainScript() {
 
-    // 毎フレームリセット
+    // ===============================================
+    // ① 🧼 まずはメモ帳をまっさらにする
+    // -----------------------------------------------
+    // 毎フレーム「新しい当たり判定」を調べたいから
+    // 前のフレームの結果は消しておくよ。
+    // ===============================================
     hitList.clear();
 
+    // ===============================================
+    // ② 🎯 ぶつかるかもしれない相手を集める
+    // -----------------------------------------------
+    // 「この子たちと当たってないか？」をチェックする相手リスト。
+    // world.objects から取り出すけど、ない時は null になるかも。
+    // ===============================================
     final objects = [
       world.objects["建物_1"],
       world.objects["建物_2"],
@@ -2441,54 +2532,91 @@ class CollisionGimmickPlayer extends SuperPlayer {
       world.objects["UFO_3"],
     ];
 
+    // ===============================================
+    // ③ 🧑‍🚀 主役（プレイヤー）を見つける
+    // -----------------------------------------------
+    // ここでは「アノアノ輪郭」が主人公だよ。
+    // もし見つからなかったら、今日は何もできないので帰る！
+    // ===============================================
     final player = world.objects["アノアノ輪郭"];
     if (player == null) return;
 
-    // -----------------------------
-    // 🔁 全オブジェクトをチェック
-    // -----------------------------
+    // ===============================================
+    // ④ 🔍 ぜんぶの相手を、ひとりずつ調べる
+    // -----------------------------------------------
+    // ループで相手を取り出して「当たった？」をチェックするよ。
+    // ===============================================
     for (final obj in objects) {
 
+      // ---------------------------------------------
+      // 🕳 相手がいない（null）ならスキップ
+      // ---------------------------------------------
       if (obj == null) continue;
 
-      final side =
-          ComponentsService.hitSide(player, obj);
+      // ---------------------------------------------
+      // 🧭 ぶつかった向きを調べる
+      // ---------------------------------------------
+      // ComponentsService.hitSide は
+      // 「当たってない」→ HitSide.none
+      // 「上から着地」→ HitSide.north
+      // 「下からゴツン」→ HitSide.south
+      // 「左/右からゴツン」→ west/east
+      // を返すよ。
+      final side = ComponentsService.hitSide(player, obj);
 
+      // ---------------------------------------------
+      // ✅ 当たってたらメモ帳に書く
+      // ---------------------------------------------
       if (side != HitSide.none) {
-
-        // ⭐ 衝突情報を保存
+        // 「だれに」「どっちから当たった」を保存！
         hitList.add((obj, side));
       }
     }
 
-    // -----------------------------
-    // 🔥 衝突結果を処理
-    // -----------------------------
+    // ===============================================
+    // ⑤ 🔥 当たった結果を使って、なにかする場所
+    // -----------------------------------------------
+    // ここは「衝突したあとに何をするか」を書くところ。
+    // でも今はまだ練習だから、switchで分けるだけだよ。
+    // （このクラスは基本「検出係」なので、
+    // 　ゲームオーバーとか補正は別クラスに任せるのがキレイ）
+    // ===============================================
     for (final hit in hitList) {
 
+      // ---------------------------------------------
+      // 🧾 メモ帳から取り出す
+      // ---------------------------------------------
+      // hit.$1 → ぶつかった相手
+      // hit.$2 → ぶつかった向き
       final obj = hit.$1;
       final side = hit.$2;
 
+      // ---------------------------------------------
+      // 🧭 ぶつかった向きで分けて考える
+      // ---------------------------------------------
       switch (side) {
 
         case HitSide.north:
-          // 上から着地
+          // 🟢 上から乗っかった（着地っぽい）
+          // 例）ジャンプ回数リセット、接地フラグON など
           break;
 
         case HitSide.south:
-          // 下から衝突
+          // 🔴 下からドン！（頭ぶつけた）
+          // 例）ゲームオーバー、跳ね返り など
           break;
 
         case HitSide.west:
         case HitSide.east:
-          // 横衝突
+          // 🔴 横からゴツン！（体当たり）
+          // 例）ゲームオーバー、押し戻し など
           break;
 
         case HitSide.none:
+          // ここには基本来ない（上で none は弾いてる）
           break;
       }
     }
-
   }
 }
 
@@ -2684,145 +2812,64 @@ class GameoverJudgmentPlayer extends SuperPlayer {
 
 
 class GameOverDisplayPlayer extends SuperPlayer {
-
+  double hidden_xy = -10000.0;
+  Size screenSize = SystemEnvService.screenSize;
   late Offset center_down;
-  final Offset hidden_xy = const Offset(-10000, -10000);
+
+  String frame_result = "ok";
+  late List<dynamic> list_2d;
+  int wait_time = 1;
+  int? end_time = null;
+  int currentIndex = 0;
+  late List<List<List<dynamic>>> animation_film_3dlist;
+  bool film_finished = false;
 
   @override
   void init() {
+    list_2d = [];
+    center_down = Offset(0, screenSize.height / 4);
 
-    final screenSize = SystemEnvService.screenSize;
-    final half = screenSize.width / 2;
+    ObjectCreator.createImage(objectName: "もう一回やる？ボタン",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 250,height: 120,layer: 600);
+    ObjectCreator.createImage(objectName: "悲しい右目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 350);
+    ObjectCreator.createImage(objectName: "悲しい左目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 351);
+    ObjectCreator.createImage(objectName: "悲しい口",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,rotation: pi,enableCollision: true,layer: 352);
 
-    center_down = Offset(
-      0,
-      screenSize.height / 4,
-    );
+    this.animation_film_3dlist = [
+      
+      AnimationDict.match2d([
 
+        // もう一回やるボタンの表示
+        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy), 0, ObjectManager.toSetPosition]],
+        
+        // 表情追従全解除
+        AnimationDict.get("表情追従全解除"),
 
-    ObjectCreator.createImage(
-      objectName: "もう一回やる？ボタン",
-      assetPath: "assets/images/once_again.png",
-      position: hidden_xy,
-      width: 250,
-      height: 120,
-      layer: 600, // 表示順番
-    );
+        // 表情追従全解除
+        AnimationDict.get("表情全隠し"),
 
-    ObjectCreator.createImage(
-      objectName: "悲しい右目",
-      assetPath: "assets/images/once_again.png",
-      position: hidden_xy,
-      width: 180,
-      height: 80,
-      enableCollision: true,
-      layer: 350, // 表示順番
-    );
+        // アノアノの顔を悲しいに変える。
+        AnimationDict.get("悲しい顔"),
 
-    ObjectCreator.createImage(
-      objectName: "悲しい左目",
-      assetPath: "assets/images/once_again.png",
-      position: hidden_xy,
-      width: 180,
-      height: 80,
-      enableCollision: true,
-      layer: 351, // 表示順番
-    );
-
-    ObjectCreator.createImage(
-      objectName: "悲しい口",
-      assetPath: "assets/images/once_again.png",
-      position: hidden_xy,
-      width: 180,
-      height: 80,
-      rotation: pi,
-      enableCollision: true,
-      layer: 352, // 表示順番
-    );
+      ])
+    ];
   }
 
   @override
   void mainScript() {
 
-    // ================================
-    // 🔹 必要オブジェクト取得
-    // ================================
-    final onceAgainButton = world.objects["もう一回やる？ボタン"];
-    final sadRightEye     = world.objects["悲しい右目"];
-    final sadLeftEye      = world.objects["悲しい左目"];
-    final sadMouth        = world.objects["悲しい口"];
-
-    final angryEyes = world.objects["アノアノ両目_怒"];
-    final normalMouth = world.objects["アノアノ口"];
-
-    if (onceAgainButton == null ||
-        sadRightEye == null ||
-        sadLeftEye == null ||
-        sadMouth == null ||
-        angryEyes == null ||
-        normalMouth == null) return;
-
-    // ================================
-    // 🔹 ① ボタンを中央下へ表示
-    // ================================
-    ObjectManager.toSetPosition(
-      onceAgainButton,
-      (center_down.dx, center_down.dy),
-    );
-
-    // ================================
-    // 🔹 ② 怒り目を隠す
-    // ================================
-    ObjectManager.toSetPosition(
-      angryEyes,
-      (hidden_xy.dx, hidden_xy.dy),
-    );
-
-    // ================================
-    // 🔹 ③ 通常口を隠す
-    // ================================
-    ObjectManager.toSetPosition(
-      normalMouth,
-      (hidden_xy.dx, hidden_xy.dy),
-    );
-
-    // ================================
-    // 🔹 ④ 悲しい目を現在位置にコピー
-    //    （怒り目の位置を基準にする）
-    // ================================
-    ObjectManager.toCopyPosition(
-      sadRightEye,
-      (angryEyes,),
-    );
-
-    ObjectManager.toMove(
-      sadRightEye,
-      (20, 0),
-    );
-
-    ObjectManager.toCopyPosition(
-      sadLeftEye,
-      (angryEyes,),
-    );
-
-    ObjectManager.toMove(
-      sadLeftEye,
-      (-20, 0),
-    );
-
-    // ================================
-    // 🔹 ⑤ 悲しい口を表示
-    // ================================
-    ObjectManager.toCopyPosition(
-      sadMouth,
-      (normalMouth,),
-    );
-
-    // 口を反転（念のため毎回指定）
-    ObjectManager.toSetRotationDeg(
-      sadMouth,
-      (180,),
-    );
+    if (this.film_finished){
+      //　アニメーションの実行
+      final result = AnimationFilmService.runAnimationFilm(this.frame_result,this.animation_film_3dlist,this.list_2d,this.wait_time,this.end_time,this.currentIndex);
+      
+      // 結果を展開
+      this.frame_result = result.$1;
+      this.animation_film_3dlist = result.$2;
+      this.list_2d = result.$3;
+      this.wait_time = result.$4;
+      this.end_time = result.$5;
+      this.currentIndex = result.$6;
+      this.film_finished = result.$7;
+    }
   }
 }
 
@@ -3184,7 +3231,8 @@ class _MyAppState extends State<MyApp>
     }
 
     // --------------------------
-    // ゲーム終了画面で「もう一度やる」ボタンが押された
+    // ゲーム終了画面で「もう一度や
+    // る」ボタンが押された
     // --------------------------
     else if (
       this.schedule_status == "ゲームオーバーモード" &&
@@ -3195,6 +3243,23 @@ class _MyAppState extends State<MyApp>
 
       next_schedule = Mode_GameInit;
       this.schedule_status = "ゲームを初期化しました。";
+
+      // ゲームオーバーのフィルムのフラグのをもとに戻す。
+      world.gameOverDisplayPlayer.film_finished = false;
+    }
+
+    // --------------------------
+    // ゲーム終了画面で何も入力さ
+    // れていないなら、モード切替
+    // しない。
+    // --------------------------
+    else if (
+      this.schedule_status == "ゲームオーバーモード" &&
+      world.gameOverInputPlayer.flag_one_more_start_button == false
+    ) {
+
+      next_schedule = Mode_GameOver;
+      this.schedule_status = "ゲームオーバーモード";
     }
 
     // =============================================================
