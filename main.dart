@@ -121,6 +121,19 @@ class AnimationDict {
   static double hidden_xy = -10000.0;
 
   // ----------------------------------------------------------
+  // 🧩 複数の3次元リスト（フィルム）を受け取り、
+  // それらを 1つの3次元リストにまとめる（連結する）
+  //
+  // 使い方：
+  // final film = AnimationFilmService.match3d([filmA, filmB, filmC]);
+  // ----------------------------------------------------------
+  static List<List<List<dynamic>>> match3d(
+    List<List<List<List<dynamic>>>> films,
+  ) {
+    return films.expand((f) => f).toList();
+  }
+
+  // ----------------------------------------------------------
   // 🧩 引数に複数二次元リストを取り、
   // すべてをまとめて一つの二次元リストに変換するメソッド
   // ----------------------------------------------------------
@@ -291,6 +304,39 @@ class ComponentsService {
   }
 
 
+  // ============================================================
+  // 📌 base に一番近いオブジェクトを candidates から探す
+  // ・candidates が空なら null
+  // ・base 自身が入っていても除外したいなら除外オプションも付けられる
+  // ============================================================
+  static WorldObject? nearestObject(
+    WorldObject base,
+    List<WorldObject> candidates, {
+    bool excludeSelf = true, // base 自身が混ざってたら除外する
+  }) {
+    if (candidates.isEmpty) return null;
+
+    WorldObject? nearest;
+    double bestDist2 = double.infinity;
+
+    for (final o in candidates) {
+      if (excludeSelf && identical(o, base)) continue;
+
+      final dx = o.position.dx - base.position.dx;
+      final dy = o.position.dy - base.position.dy;
+      final dist2 = dx * dx + dy * dy; // sqrtしない（二乗距離で比較）
+
+      if (dist2 < bestDist2) {
+        bestDist2 = dist2;
+        nearest = o;
+      }
+    }
+
+    return nearest;
+  }
+
+
+
   // -----------------------------
   // 👆 クリック判定
   // -----------------------------
@@ -347,7 +393,6 @@ class ComponentsService {
 //
 // ==============================================================
 class AnimationFilmService {
-
   static
   (
     String newFrameResult,
@@ -379,7 +424,12 @@ class AnimationFilmService {
     // ===========================
     // ⏱ 実行タイミング
     // ===========================
+    debugPrint("0");
+    debugPrint("$endTime");
+    debugPrint("$nowSec");
+    
     if (endTime <= nowSec) {
+      debugPrint("1");
       endTime = null;
 
       // ===========================
@@ -389,6 +439,8 @@ class AnimationFilmService {
       if (frameResult == "ok" &&
           currentIndex < animationFilm3DList.length) {
         
+        debugPrint("2");
+
         // ３次元リストから２次元リストを取得。
         list2d = animationFilm3DList[currentIndex];
         currentIndex++;
@@ -396,6 +448,7 @@ class AnimationFilmService {
 
       // frameResult を ok で初期化。
       frameResult = "ok";
+
 
       // ===========================
       // 🟡 ① 二次元リストを実行
@@ -426,6 +479,84 @@ class AnimationFilmService {
       endTime,
       currentIndex,
       currentIndex >= animationFilm3DList.length
+    );
+  }
+
+
+  // ============================================================
+  // 🐇 秒無視・スキップ版：同一フレームで最後まで流す
+  //
+  // ・waitTime/endTime を無視
+  // ・各コマを順に取り出して実行し、最後まで消化
+  // ・無限ループ防止の maxSteps を入れる
+  //
+  // 使い方：
+  // final r = AnimationFilmService.runAnimationFilmSkipTime(
+  //   frame_result, film3d, list2d, wait_time, end_time, currentIndex,
+  // );
+  // ============================================================
+  static (
+    String newFrameResult,
+    List<List<List<dynamic>>> newAnimationFilm3DList,
+    List<dynamic> newList2D,
+    int newWaitTime,
+    int? newEndTime,
+    int newCurrentIndex,
+    bool isFilmEmpty
+  ) runAnimationFilmSkipTime(
+    String frameResult,
+    List<List<List<dynamic>>> animationFilm3DList,
+    List<dynamic> list2d,
+    int waitTime,
+    int? endTime,
+    int currentIndex, {
+    int maxSteps = 100000, // 安全装置（大きめ）
+  }) {
+    // 秒関連は無効化
+    endTime = null;
+    waitTime = 0;
+    frameResult = "ok";
+
+    int steps = 0;
+
+    // フィルムが終わるまで “同一フレームで” 回す
+    while (currentIndex < animationFilm3DList.length) {
+      if (steps++ > maxSteps) {
+        // 無限ループ対策：危険なので止める
+        // debugPrint等で気づけるようにする
+        debugPrint("⚠ runAnimationFilmSkipTime: maxStepsに到達。フィルムが無限/過大の可能性");
+        break;
+      }
+
+      // 次コマ取得
+      list2d = animationFilm3DList[currentIndex];
+      currentIndex++;
+
+      // 1コマ実行（待機時間は完全無視）
+      for (final cell in list2d) {
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+
+        final result = func(obj, value);
+
+        // "running" は従来通り runningTasks に積む
+        if (result == "running") {
+          ObjectManager.addRunningTask(obj, func, value);
+        }
+      }
+    }
+
+    final finished = (currentIndex >= animationFilm3DList.length);
+
+    return (
+      "ok",
+      animationFilm3DList,
+      list2d,
+      0,     // waitTimeは無意味なので0固定
+      null,  // endTimeも無意味なのでnull固定
+      currentIndex,
+      finished
     );
   }
 }
@@ -520,11 +651,109 @@ class ObjectManager {
   // ジャンプ管理用の辞書
   static final Map<WorldObject, _JumpData> _jumpingObjects = {}; // {obj, 着地予定座標}
 
-  // 管理用の辞書
+  // 一次関数移動管理用の辞書
   static final Map<WorldObject, _MoveData> _movingObjects = {}; // {obj, 着地予定座標}
 
   // 戻り値が"running"のリストを保持するリスト。（この中にjump等の、‘毎フレーム実行必須‘モノが格納される。）
   static final List<_RunningTask> _runningTasks = [];
+
+
+  // ============================================================
+  // ✅ runningTasks 内に、指定した関数が1つでもあれば false
+  // （＝指定関数が1つも無ければ true）
+  // ============================================================
+  static bool hasNoRunningTasksOfFuncs(List<Function> funcs) {
+    for (final t in _runningTasks) {
+      for (final f in funcs) {
+        if (identical(t.func, f)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+
+  // ============================================================
+  // 🧲 「相手の上に乗っかる」補正（着地確定）
+  // ・ジャンプ系 runningTask を止める（obj & jump系func）
+  // ・obj を ground の上面にぴったり合わせる（めり込み防止）
+  // ============================================================
+  static String snapOnTopOf(
+    WorldObject obj,
+    (
+      WorldObject ground,            // 乗っかる相手
+      bool keepX,                    // true: Xはそのまま / false: groundのXに合わせる
+      double extraGapY,              // ちょい浮かせたい時用（例: 0〜2）
+    ) params,
+  ) {
+    final (ground, keepX, extraGapY) = params;
+
+    // コライダーが無いと「上に乗る」が計算できない
+    if (obj.colliderRect == null || ground.colliderRect == null) {
+      return "ok"; // ここは設計次第。安全に何もしない。
+    }
+
+    // ① ジャンプ系の runningTask を止める（必要な分だけ追加してOK）
+    _runningTasks.removeWhere((t) =>
+        identical(t.obj, obj) &&
+        (identical(t.func, toJump) || identical(t.func, toJumpToObject)));
+
+    // ② 物理補正：ground の上面に obj の下面が当たる位置へ
+    final Rect objRect = obj.colliderRect!;
+    final Rect groundRect = ground.colliderRect!;
+
+    // 「中心座標系」なので、obj の半分の高さだけ上に置く
+    final double correctedY = groundRect.top - (objRect.height / 2) - extraGapY;
+
+    final double correctedX = keepX ? obj.position.dx : ground.position.dx;
+
+    obj.position = Offset(correctedX, correctedY);
+
+    // ③ ジャンプ辞書も止めたいなら（保険）
+    _jumpingObjects.remove(obj);
+
+    return "ok";
+  }
+
+
+  // ============================================================
+  // 🧹 指定 obj の「指定 func の running タスク」を全部削除
+  // ・obj と func が一致する _RunningTask を removeWhere で消す
+  // ============================================================
+  static String removeRunningTask(
+    WorldObject obj,
+    (
+      Function func,
+    ) params,
+  ) {
+    final (func,) = params;
+
+    _runningTasks.removeWhere((t) =>
+        identical(t.obj, obj) &&
+        identical(t.func, func)
+    );
+
+    return "ok";
+  }
+
+
+  // ============================================================
+  // ✅ runningTasks 内に、
+  // よく使う「移動系セット」が一つも実行中でなければ、
+  // trueを返す。
+  // ============================================================
+  static bool hasNoRunningMovementTasks() {
+    return hasNoRunningTasksOfFuncs([
+      toJump,
+      toJumpToObject,
+      toLinearMove,
+      toLinearMoveBetweenObjects,
+      moveToObjectToX,
+      toFall,
+    ]);
+  }
+
 
   // ==============================
   // 🔄 ジャンプ管理を完全リセット
@@ -587,6 +816,67 @@ class ObjectManager {
     obj.position += Offset(dx, dy);
     return "ok";
   }
+
+
+  // ============================================================
+  // 🎲 ランダム配置（左上・右下で指定：おこちゃま版）
+  // 使い方：(leftX, topY, rightX, bottomY, seed, margin)
+  // ・座標が逆でもOK（自動で左右・上下を直す）
+  // ・seed は null で毎回ランダム / 数字で再現
+  // ・margin は省略OK：端っこから内側にする余白
+  // ============================================================
+  static String toRandomizePositionByCorners(
+    WorldObject obj,
+    (
+      num leftX,     // 左上X
+      num topY,      // 左上Y
+      num rightX,    // 右下X
+      num bottomY,   // 右下Y
+      int? seed,     // nullなら毎回ランダム
+      num? margin,   // 省略OK：端っこ回避
+    ) params,
+  ) {
+    final (leftRaw, topRaw, rightRaw, bottomRaw, seed, marginRaw) = params;
+
+    // ① num → double
+    final x1 = _toDouble(leftRaw);
+    final y1 = _toDouble(topRaw);
+    final x2 = _toDouble(rightRaw);
+    final y2 = _toDouble(bottomRaw);
+
+    // ② 左右・上下が逆でも安全に直す
+    double left   = min(x1, x2);
+    double right  = max(x1, x2);
+    double top    = min(y1, y2);
+    double bottom = max(y1, y2);
+
+    // ③ 余白（省略なら0）
+    final m = (marginRaw == null) ? 0.0 : _toDouble(marginRaw);
+
+    // margin で範囲が壊れない時だけ縮める
+    if (right - left >= m * 2) {
+      left += m;
+      right -= m;
+    }
+    if (bottom - top >= m * 2) {
+      top += m;
+      bottom -= m;
+    }
+
+    // ④ 乱数
+    final rng = (seed == null) ? Random() : Random(seed);
+
+    // ⑤ 幅/高さが0でも落ちない
+    final w = right - left;
+    final h = bottom - top;
+
+    final x = (w <= 0) ? left : left + w * rng.nextDouble();
+    final y = (h <= 0) ? top  : top  + h * rng.nextDouble();
+
+    obj.position = Offset(x, y);
+    return "ok";
+  }
+
 
   // ==============================
   // 任意角度に設定（度で指定）
@@ -1715,6 +2005,9 @@ class GameStoryPlayer extends SuperPlayer {
   bool flag_story_end = false;
   double hidden_xy = -10000.0;
 
+  // ボタン管理
+  bool flag_skip_button = false;
+
   // 座標管理変数
   Size screenSize = SystemEnvService.screenSize;
   late double bias_x; // late → 意味:「後で代入するので空の初期化だけど許してほしい」
@@ -1739,6 +2032,15 @@ class GameStoryPlayer extends SuperPlayer {
 
 
     // 使用するオブジェクトの用意
+    ObjectCreator.createImage(
+      objectName: "スキップボタン",
+      assetPath: "assets/images/skip.png",
+      position: Offset(this.hidden_xy, this.hidden_xy),
+      width: 70,
+      height: 70,
+      layer: 201, // 表示順番
+      enableCollision: true, // ★これ
+    );
     ObjectCreator.createImage(
       objectName: "地面",
       assetPath: "assets/images/jimenn.png",
@@ -1840,6 +2142,9 @@ class GameStoryPlayer extends SuperPlayer {
         // スタートボタンの退避
         [[world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition]],
 
+        // スキップボタンの配置
+        [[world.objects["スキップボタン"], (0, 180), 0, ObjectManager.toSetPosition]],
+
         // 地面を配置
         [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
 
@@ -1911,6 +2216,40 @@ class GameStoryPlayer extends SuperPlayer {
     this.end_time = result.$5;
     this.currentIndex = result.$6;      // ★index保存
     this.flag_story_end = result.$7;    // ★終了フラグは$7
+
+
+    // ============================================
+    // スキップボタンが押されたか判定
+    // ============================================
+    final button = world.objects["スキップボタン"];
+    if (button != null &&
+        ComponentsService.isClicked(button)) {
+      debugPrint("🐇 スキップボタンが押されました");
+      this.flag_skip_button = true;
+
+      // スキップの代わりに、高速でアニメを終わらせる。
+      final result = AnimationFilmService.runAnimationFilmSkipTime(
+        this.frame_result,
+        this.animation_film_3dlist,
+        this.list_2d,
+        this.wait_time,
+        this.end_time,
+        this.currentIndex,
+      );
+      this.frame_result = result.$1;
+      this.animation_film_3dlist = result.$2;
+      this.list_2d = result.$3;
+      this.wait_time = result.$4;
+      this.end_time = result.$5;
+      this.currentIndex = result.$6;      // ★index保存
+      this.flag_story_end = result.$7;    // ★終了フラグは$7
+
+      // かつ、移動系メソッドがすべて完了していれば
+      if (ObjectManager.hasNoRunningMovementTasks()){
+        // ストーリーは終了したことにする。
+        this.flag_story_end = true;
+      }
+    }
   }
 }
 
@@ -1941,7 +2280,7 @@ class GameInitPlayer extends SuperPlayer {
 
     // アニメーションフィルムの作成
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
-    this.animation_film_3dlist = [
+    this.animation_film_3dlist = [ // 🌙これ自体実行されていないことが判明しました。
 
         AnimationDict.match2d([ // この中に入れた二次元リストは、一つの二次元リストに変換されます。
           // 空想隠す。
@@ -1951,15 +2290,17 @@ class GameInitPlayer extends SuperPlayer {
            [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]
           ],
 
-          // 一旦表情全解除        
-          AnimationDict.get("表情追従全解除"), 
-
-          // 既に存在するゲームオブジェクトを初期位置に移動させる。
+          // Skipボタン隠す。
           [
-           [world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump],
-           [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset],
-           [world.objects["アノアノ両目_怒"], (world.objects["アノアノ輪郭"]!, 20, -10), 0, ObjectManager.toFollowWithOffset]
-          ]
+           [world.objects["スキップボタン"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+          ],
+
+          // 真剣顔に変更
+          AnimationDict.get("表情追従全解除"), 
+          AnimationDict.get("表情全隠し"), 
+          AnimationDict.get("真剣顔")
+
+
         ])
     ];
   }
@@ -1968,6 +2309,7 @@ class GameInitPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
+
     // ============================================
     // 邪魔オブジェクトの生成（見えないところに。）
     // ============================================
@@ -2074,6 +2416,9 @@ class GameInitPlayer extends SuperPlayer {
 
     // ============================================
     // ゲームの初期化
+    // (これが実行されなかった
+    // →モード遷移で、flag_all_film_finishedが
+    // trueでモード遷移するようにコーディングした。)
     // ============================================
     final result = AnimationFilmService.runAnimationFilm(
       this.frame_result,
@@ -2112,28 +2457,28 @@ class ReceiveInputPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "障害物出発地点",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(450, 100),
-      width: 250,
-      height: 120,
-      layer: 600, // 表示順番
+      position: Offset(50, 100),
+      width: 10,
+      height: 10,
+      layer: 600000, // 表示順番
     );
     // 障害物出発地点
     ObjectCreator.createImage(
       objectName: "障害物出発地点_ランダム",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(450, 100),
-      width: 250,
-      height: 120,
-      layer: 600, // 表示順番
+      position: Offset(50, 100),
+      width: 10,
+      height: 10,
+      layer: 600000, // 表示順番
     );
     // 障害物終点
     ObjectCreator.createImage(
       objectName: "障害物終点",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(-400, 100),
-      width: 250,
-      height: 120,
-      layer: 600, // 表示順番
+      width: 10,
+      height: 10,
+      layer: 600000, // 表示順番
     );
   }
 
@@ -2180,26 +2525,19 @@ class MovingDisturverPlayer extends SuperPlayer {
   // ==============================
   // フィルム再生用キャッシュ
   // ==============================
-  // 🎞 frame_result：フィルムの1コマが終わったかの状態（"ok" or "running"）
-  String frame_result = "ok";
-  // 📦 list_2d：いま実行中の「2次元リスト（1コマぶん）」の箱
-  late List<dynamic> list_2d;
-  // ⌛ wait_time：次のコマに進むまで待つ秒数（フィルム用）
-  int wait_time = 1;
-  // 🕰 end_time：待機が終わる予定の時刻（秒）
-  int? end_time = null;
-  // 🔢 currentIndex：3Dリストの「いま何コマ目？」（これ超大事）
-  int currentIndex = 0;   // ★追加
-  // 🧱 patternごとのフィルム（3Dリスト）
-  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1;
-  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2;
-  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3;
-  // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
-  bool item_and_disturver_animation_film_3dlist_1_end = false;
-  bool item_and_disturver_animation_film_3dlist_2_end = false;
-  bool item_and_disturver_animation_film_3dlist_3_end = false;
-  // ✅ 全部終わったか（今は使ってないけど、将来の拡張用）
-  bool flag_all_film_finished = false;
+  String frame_result = "ok"; // 🎞 frame_result：フィルムの1コマが終わったかの状態（"ok" or "running"）
+  late List<dynamic> list_2d; // 📦 list_2d：いま実行中の「2次元リスト（1コマぶん）」の箱
+  int wait_time = 1; // ⌛ wait_time：次のコマに進むまで待つ秒数（フィルム用）
+  int? end_time = null; // 🕰 end_time：待機が終わる予定の時刻（秒）
+  int currentIndex = 0; // 🔢 currentIndex：3Dリストの「いま何コマ目？」（これ超大事） // ★追加
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1; // 🧱 patternごとのフィルム（3Dリスト）
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2; // 🧱 patternごとのフィルム（3Dリスト）
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3; // 🧱 patternごとのフィルム（3Dリスト）
+  late List<List<List<dynamic>>> ufo_start_ramdom_put; // 🧱 patternごとのフィルム（3Dリスト）
+  bool item_and_disturver_animation_film_3dlist_1_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
+  bool item_and_disturver_animation_film_3dlist_2_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
+  bool item_and_disturver_animation_film_3dlist_3_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
+  bool flag_all_film_finished = false; // ✅ 全部終わったか（今は使ってないけど、将来の拡張用）
 
   @override
   void init() {
@@ -2215,6 +2553,16 @@ class MovingDisturverPlayer extends SuperPlayer {
       -screenSize.width / 2,
       screenSize.height / 2,
     );
+
+
+    // ufo出発地点
+    // ---------------------------------------------
+    // 出発地点を決定させる。🌙
+    // ---------------------------------------------
+    this.ufo_start_ramdom_put = [
+      [[world.objects["障害物出発地点_ランダム"], (-400, 400, -200, 200, null, 0), 0, ObjectManager.toRandomizePositionByCorners]],
+    ];
+
 
     // マップPattern１
     // ---------------------------------------------
@@ -2305,6 +2653,12 @@ class MovingDisturverPlayer extends SuperPlayer {
     } else {
       targetFilm = item_and_disturver_animation_film_3dlist_3;
     }
+
+    // 障害物出発地点処理を含有させる。
+    targetFilm = AnimationDict.match3d([
+      this.ufo_start_ramdom_put,
+      targetFilm
+    ]);
 
     // 🎞 フィルムを1回ぶん進める
     // ・待機が終わったら次のコマを取り出して実行
@@ -2622,158 +2976,268 @@ class CollisionGimmickPlayer extends SuperPlayer {
 
 
 // ==============================================================
-// 💥 CollisionResolvePlayer
+// 💥 CollisionResolvePlayer（ぶつかった後の「状態決め係」）
 // --------------------------------------------------------------
-// 【役割】
-//  CollisionGimmickPlayer が収集した衝突情報をもとに、
-//  ・状態管理（接地 / ジャンプ状態）
-//  ・ゲームオーバー判定
-//  を行う専用Player。
+// 【このクラスがやること】
+// 1) いまぶつかってる？（hitList）を見て
+// 2) ゲームオーバーかどうか決めて
+// 3) 落ちるなら落として（toFall）
+// 4) 着地したらジャンプ状態をリセットする
 //
-// 【設計思想（改良後）】
-//  ・衝突「検出」と「解決」は分離する
-//  ・座標補正（物理）は ObjectManager.toFall に委譲
-//  ・このクラスは “状態制御のみ” を担当する
-//
-// 【現在の責務】
-//  ・地面候補の抽出
-//  ・ゲームオーバー判定
-//  ・着地成功時のジャンプリセット
-//
-// 物理エンジン的な層構造：
-//    CollisionGimmick  → 検出層
-//    ObjectManager     → 物理実行層
-//    CollisionResolve  → 状態管理層
-// ==============================================================
+// ⚠ 注意：
+// ・「ぶつかったか調べる」だけの仕事は CollisionGimmickPlayer が担当
+// ・「座標を動かす（物理）」は ObjectManager.toFall が担当
+// ・ここは「状態を決める」だけ（接地フラグやゲームオーバー）
+// ============================================================== 
 class CollisionResolvePlayer extends SuperPlayer {
+
+  // ==========================================================
+  // アニメーションフィルム群
+  // ==========================================================
+  late List<List<List<dynamic>>> animation_film_3dlist_for_stop_jump;
+  late List<List<List<dynamic>>> animation_film_3dlist_for_ride_object;
+  
+
+  // ==========================================================
+  // フィルム再生用キャッシュ
+  // ==========================================================
+  String frame_result = "ok";
+  late List<dynamic> list_2d = [];
+  int wait_time = 1;
+  int? end_time = null;
+  int currentIndex = 0;   // ★追加
+  late List<List<List<dynamic>>> animation_film_3dlist;
+  bool flag_story_end = false;
+  WorldObject? ride_object;
 
   @override
   void init() {
-    // 状態を持たないため初期化処理なし
+    // ============================================
+    // アニメーションフィルムの作成
+    // ============================================
+    // アノアノジャンプをストップするフィルム
+    this.animation_film_3dlist_for_stop_jump = [
+        // アノアノジャンプをストップ
+        [[world.objects["アノアノ輪郭"]!, (ObjectManager.toJump,), 0, ObjectManager.removeRunningTask]],
+      ];
   }
 
   @override
   void mainScript() {
-    // ==========================================================
-    // 🎮 プレイヤー（アノアノ輪郭）取得
-    // ==========================================================
-    final player = world.objects["アノアノ輪郭"];
-    if (player == null) return;
 
+    // ==========================================================
+    // 🧩 ブロック①：主役（プレイヤー）を探す
+    // ----------------------------------------------------------
+    // ここでは「アノアノ輪郭」が主人公だよ。
+    // ==========================================================
+    final player = world.objects["アノアノ輪郭"]!;
+
+    // ジャンプ状態を持ってるPlayer（ジャンプ中？地面にいる？）
     final jumpPlayer = world.gameJumpAnimationPlayer;
 
+
     // ==========================================================
-    // 📋 今フレームの衝突一覧
-    // （CollisionGimmickPlayer が毎フレーム更新）
+    // 🧩 ブロック②：いまフレームの「ぶつかったメモ帳」をもらう
+    // ----------------------------------------------------------
+    // CollisionGimmickPlayer が毎フレーム、
+    // 「だれに」「どっちから」ぶつかったかを hitList に入れてくれてるよ。
+    // 例： (UFO_1, HitSide.west)
     // ==========================================================
     final hitList = world.collisionGimmickPlayer.hitList;
 
-    // ==========================================================
-    // 🧱 地面候補リスト作成
-    //
-    // NORTH（上から接触）のオブジェクトのみ抽出する。
-    // 実際の着地補正は toFall に任せる。
-    // ==========================================================
-    // 🧱 床候補は “重なっている物” ではなく “床になり得る物” 全部
-    final List<WorldObject> groundList = [
-      world.objects["地面"],     // ← もし使うなら
-      world.objects["建物_1"],
-      world.objects["建物_2"],
-      world.objects["建物_3"],
-      world.objects["UFO_1"],
-      world.objects["UFO_2"],
-      world.objects["UFO_3"],
-    ].whereType<WorldObject>()
-    .where((o) => o.enableCollision)
-    .toList();
 
-    // 💥 ゲームオーバー判定は hitList を見て行う（これは今の設計のままでOK）
-    for (final hit in hitList) {
-      final side = hit.$2;
+    // ==========================================================
+    // 🧩 ブロック③：「地面になり得る物」リストを作ってるだけ。
+    // ----------------------------------------------------------
+    // 大事：
+    // ・床候補は「いま重なってる物」だけじゃなく
+    //   「床になり得る物を全部」入れる考え方
+    // ・enableCollision が true のものだけ採用
+    // ==========================================================
+    final List<WorldObject> groundList = [                 // ✅ groundList という「床候補リスト」を作る（型はWorldObjectのList）
+      world.objects["地面"],                              // Mapから「地面」を取る（無ければ null になるかも）
+      world.objects["建物_1"],                            // 「建物_1」を取る（無ければ null）
+      world.objects["建物_2"],                            // 「建物_2」を取る（無ければ null）
+      world.objects["建物_3"],                            // 「建物_3」を取る（無ければ null）
+      world.objects["UFO_1"],                             // 「UFO_1」を取る（無ければ null）
+      world.objects["UFO_2"],                             // 「UFO_2」を取る（無ければ null）
+      world.objects["UFO_3"],                             // 「UFO_3」を取る（無ければ null）
+    ]                                                     // ここまでで「WorldObject? が混ざったリスト」になってる（null混入の可能性あり）
+        .whereType<WorldObject>()                         // ✅ null や別型を捨てて「WorldObjectだけ」にする（null消える）
+        .where((o) => o.enableCollision)                  // ✅ enableCollision が true の子だけ残す（当たり判定ONだけ）
+        .toList();                                        // ✅ 最後に Iterable を List に変換して完成
 
-      if (side == HitSide.south ||
-          side == HitSide.west  ||
-          side == HitSide.east) {
-        world.gameoverJudgmentPlayer.flag_gameover = true;
+
+    // ==========================================================
+    // 💥 ゲームオーバー判定（かんたん版）
+    // ----------------------------------------------------------
+    // hitList の中身を1つずつ見て、
+    // 「危ない方向」なら gameover フラグを ON にする
+    // ==========================================================
+
+    // hitList を先頭から最後まで、順番に見ていく
+    for (final hit in hitList) {                                     // ✅ ぶつかった記録を1件ずつ取り出す
+
+      // hit は (WorldObject, HitSide) というタプル（記録）だよ
+      // hit.$1 = ぶつかった相手（WorldObject）
+      // hit.$2 = ぶつかった向き（HitSide）
+      final HitSide side = hit.$2;                                   // ✅ 「ぶつかった向き」だけ取り出す（相手は今は使わない）
+
+      // ----------------------------------------------------------
+      // 「危ない向き」か？ を調べる
+      // ----------------------------------------------------------
+      final bool hitFromSouth = (side == HitSide.south);             // ✅ 下からゴツン（頭ぶつけた系）
+      final bool hitFromWest  = (side == HitSide.west);              // ✅ 左からゴツン（横から体当たり）
+      final bool hitFromEast  = (side == HitSide.east);              // ✅ 右からゴツン（横から体当たり）
+
+      // 3つのうち1つでも当てはまったら「危ない！」
+      final bool isDangerHit = hitFromSouth || hitFromWest || hitFromEast; // ✅ 危険判定まとめ
+
+      // ----------------------------------------------------------
+      // 危険ならゲームオーバーを確定させる
+      // ----------------------------------------------------------
+      if (isDangerHit) {                                             // ✅ 危険方向でぶつかった？
+        world.gameoverJudgmentPlayer.flag_gameover = true;           // ✅ ゲームオーバーフラグをON（以後、モード遷移で使う）
       }
+
+      // ※ここでbreakしないのは、
+      // 「全部見る必要がある」or「デバッグしたい」設計のままだから。
+      // もし軽くしたいなら、trueにした瞬間 break でもOK。
     }
 
 
-
-
+    // ==========================================================
+    // 🧩 ブロック⑤：衝突方向ごとに、やることを分ける
+    // ----------------------------------------------------------
+    // ・north（上から乗った）→ その相手は「床候補」に追加
+    // ・south/west/east → ゲームオーバー
+    // ・none → 何もしない
+    // ==========================================================
     for (final hit in hitList) {
-
       final obj = hit.$1;
       final side = hit.$2;
 
       switch (side) {
-
-        // ------------------------------------------------------
-        // 🟢 NORTH：地面候補
-        // ------------------------------------------------------
         case HitSide.north:
+          // 🟢 上から乗れた＝床っぽい
           groundList.add(obj);
           break;
 
-        // ------------------------------------------------------
-        // 🔴 その他方向：即ゲームオーバー
-        // ------------------------------------------------------
         case HitSide.south:
         case HitSide.west:
         case HitSide.east:
+          // 🔴 横 or 下からぶつかった＝痛い！アウト！
           world.gameoverJudgmentPlayer.flag_gameover = true;
           break;
 
         case HitSide.none:
+          // 当たってない
           break;
       }
     }
 
+
     // ==========================================================
-    // 🌪 落下処理
-    //
-    // 条件：
+    // 🧩 ブロック④：地面に乗っかったら
+    // 1) ジャンプ停止（runningからジャンプ系を削除）
+    // 2) 相手の上にスナップ（上面に補正）
+    // ==========================================================
+    // groundList の中から、プレイヤーに一番近い床を選ぶ
+    ride_object = ComponentsService.nearestObject(player, groundList);
+
+    if (ride_object != null) {
+
+      // ① ジャンプ停止フィルムの再生（runningリストから、
+      // 　　「アノアノ輪郭」のjump関数が実行されている行を削除する。）
+      _runFilm(animation_film_3dlist_for_stop_jump);
+
+      // ② 乗っかりフィルムの作成と、再生（この瞬間に作る！ null事故なし）
+      final rideFilm = [
+        [
+          [world.objects["アノアノ輪郭"]!, (ride_object!, true, 0.2), 0, ObjectManager.snapOnTopOf],
+        ],
+      ];
+      _runFilm(rideFilm);
+
+      debugPrint("gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg");
+      debugPrint("$ride_object");
+      throw();
+    }
+
+
+    // ==========================================================
+    // 🧩 ブロック⑥：落下する？（落ちる条件）
+    // ----------------------------------------------------------
+    // 落下させたいのは「空中にいるとき」だよ。
+    // ここでは
     // ・ジャンプ中ではない
-    // ・ジャンプ回数を使い切っている
-    //
-    // 実際の落下移動＆着地補正は
-    // ObjectManager.toFall が担当
+    // ・地面にいない（isGrounded が false）
+    // のとき、落とす。
     // ==========================================================
-    final bool shouldFall =
-        !jumpPlayer.flag_jumping_now &&
-        !jumpPlayer.isGrounded;
+    final bool shouldFall = !jumpPlayer.flag_jumping_now && !jumpPlayer.isGrounded;
 
+
+    // ==========================================================
+    // 🧩 ブロック⑦：落下処理（ObjectManager.toFall にお願い）
+    // ----------------------------------------------------------
+    // toFall は
+    // ・毎回ちょっと下に落とす
+    // ・床に当たったら上にめり込まないようにYを補正
+    // ・着地できたら "ok" を返す
+    // という「物理係」だよ。
+    // ==========================================================
     if (shouldFall) {
-
       final result = ObjectManager.toFall(
         player,
         (
-          5,              // 落下速度
-          groundList,     // 複数地面対応
+          5,          // 落下速度（数字が大きいほど速く落ちる）
+          groundList, // 着地できる床たち
         ),
       );
 
-      // --------------------------------------------------------
-      // 🟢 着地成功
-      // --------------------------------------------------------
-      if (result == "ok") {
 
-        // ジャンプ状態リセット
+      // ========================================================
+      // 🧩 ブロック⑧：着地できた？できたら状態リセット
+      // --------------------------------------------------------
+      // 着地したら
+      // ・地面にいる（isGrounded = true）
+      // ・ジャンプ中じゃない（flag_jumping_now = false）
+      // ・連続ジャンプ回数を0に戻す
+      // ・追加ジャンプをまたOKにする
+      // ========================================================
+      if (result == "ok") {
         jumpPlayer.flag_jumping_now = false;
         jumpPlayer.isGrounded = true;
 
         // 🔥 ジャンプ回数初期化
         jumpPlayer.currentJumpCount = 0;
         jumpPlayer.canMoreJump = true;
-      }
-
-      // --------------------------------------------------------
-      // 🔵 まだ落下中
-      // --------------------------------------------------------
-      else {
+      } else {
+        // まだ落下中（着地してない）
         jumpPlayer.isGrounded = false;
       }
     }
+  }
+
+
+  // 例：CollisionResolvePlayer の mainScript() の中で
+  void _runFilm(List<List<List<dynamic>>> film) {
+    final r = AnimationFilmService.runAnimationFilm(
+      frame_result,
+      film,
+      list_2d,
+      wait_time,
+      end_time,
+      currentIndex,
+    );
+
+    frame_result = r.$1;
+    // film自体は呼び出し元で保持したいなら返り値は捨ててOK
+    list_2d = r.$3;
+    wait_time = r.$4;
+    end_time = r.$5;
+    currentIndex = r.$6;
+    flag_story_end = r.$7;
   }
 }
 
@@ -2937,6 +3401,8 @@ class GameOverInputPlayer extends SuperPlayer {
 // ==============================================================
 // 💫 ScheduleMaking（プレイヤーを格納するリスト型自体をこれで作る。）
 // ・各Playerのinit()は、初回モード実行時に実行されます。
+// 
+// 書くPlayerを1フレームで実行するために、idx管理するコードが未実装だ（2026年2月22日🌙）
 // ==============================================================
 class ScheduleMaking {
   final List<SuperPlayer> players;
@@ -2975,7 +3441,6 @@ class ScheduleMaking {
 }
 
 
-
 // ✅ MyApp は「アプリの最上位Widget」。
 // この箱（MyApp）を使うときは、
 // 中に _MyAppState っていうおもちゃ を入れてね
@@ -2989,6 +3454,9 @@ class MyApp extends StatefulWidget {
 }
 
 
+// 【！！注意！！】
+// このクラスは、flutterが勝手に認識して、勝手にインスタンス化します。
+// 
 // ✅ こっちが「状態（変数）と処理」を持つ本体
 // ・Ticker（Flutterの描画フレームと同期するゲームループ）
 // ・スケジュール
@@ -3089,6 +3557,10 @@ class _MyAppState extends State<MyApp>
   void update() {
     // =============================================================
     // モード分岐プログラム
+    // 
+    // 【！！注意！！】
+    // 「〇〇モードだった場合」
+    // で考えること。
     // =============================================================
 
     // 🎞 GIF更新（エンジンフレーム同期）
@@ -3179,7 +3651,7 @@ class _MyAppState extends State<MyApp>
       next_schedule = Mode_GameInit;
       this.schedule_status = "ゲーム初期化モード";
     }
-    // まだストーリーが終わっていない
+    // まだストーリーが終わっていないし、スキップも押されてない。
     else if (
           this.schedule_status == "ゲームストーリーモード" &&
           world.gameStoryPlayer.flag_story_end == false
@@ -3191,14 +3663,28 @@ class _MyAppState extends State<MyApp>
     }
 
     // --------------------------
-    // ゲームの初期化が完了した
+    // ゲーム初期化モードだった
     // --------------------------
+    // ゲームの初期化が終わっていなければ、モードはそのまま。
     else if (
-          this.schedule_status == "ゲーム初期化モード"
+          this.schedule_status == "ゲーム初期化モード" &&
+          world.gameInitPlayer.flag_all_film_finished == false
+        ) {
+      // モードを変化させない。
+      next_schedule = Mode_GameInit;
+      this.schedule_status = "ゲーム初期化モード";
+    }
+
+    // ゲームの初期化が完了していれば、ゲームモードに遷移
+    else if (
+          this.schedule_status == "ゲーム初期化モード" &&
+          world.gameInitPlayer.flag_all_film_finished
         ) {
       // ゲームモードに遷移。
       next_schedule = Mode_Game;
       this.schedule_status = "ゲームモード";
+      // フラグをもとに戻す。
+      world.gameInitPlayer.flag_all_film_finished = false;
     }
 
     // --------------------------
