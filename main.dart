@@ -230,6 +230,7 @@ enum HitSide {
   south,
   west,
   east,
+  inside, // 👈 追加
 }// --------------------------------------------------------------
 // 💥 衝突方向（優先順位つき）
 // ※ NORTH を最優先にする設計
@@ -260,7 +261,7 @@ class ComponentsService {
   // ------------------------------------------------------------
   // 💥 衝突方向付き判定
   // 返り値：HitSide
-  // 優先順位：北 → 南 → 西 → 東
+  // 優先順位：南 → 内包 → 西 → 北 → 東
   // ------------------------------------------------------------
   static HitSide hitSide(WorldObject a, WorldObject b) {
     if (!a.enableCollision || !b.enableCollision) return HitSide.none;
@@ -289,26 +290,39 @@ class ComponentsService {
     final double overlapY = inter.height;
 
     // ================================
-    // 🔴 縦方向優先（NORTH優先設計）
+    // 🔴 南優先
     // ================================
-    if (overlapY <= overlapX) {
-
-      // b が a より上にいる → 北衝突
-      if (dy < 0) {
-        return HitSide.north;
-      }
-
-      // b が下 → 南衝突
+    if (overlapY <= overlapX && dy >= 0) {
       return HitSide.south;
     }
 
     // ================================
-    // 🟢 横方向
+    // ✅ 内包判定
     // ================================
-    if (dx < 0) {
+    if (ra.contains(rb.topLeft) && ra.contains(rb.bottomRight)) {
+      return HitSide.inside;
+    }
+    if (rb.contains(ra.topLeft) && rb.contains(ra.bottomRight)) {
+      return HitSide.inside;
+    }
+
+    // ================================
+    // 🟢 西
+    // ================================
+    if (overlapX < overlapY && dx < 0) {
       return HitSide.west;
     }
 
+    // ================================
+    // 🔴 北
+    // ================================
+    if (overlapY <= overlapX && dy < 0) {
+      return HitSide.north;
+    }
+
+    // ================================
+    // 🟢 東（残り全部）
+    // ================================
     return HitSide.east;
   }
 
@@ -1241,6 +1255,101 @@ class ObjectManager {
   }
   
 
+  static String toJump_to_ground(
+      WorldObject obj,
+      (
+        num targetX,        // 着地予定のX座標（最終到達位置）
+        num targetY,        // 着地予定のY座標（最終到達位置）
+        num jumpPower,      // ジャンプの高さ（放物線の頂点の強さ）
+        num durationSec,    // ジャンプにかける時間（秒）
+        int continuous_jump_max_num,   // 最大連続ジャンプ回数（例：2なら二段ジャンプ）
+        bool flag_more_jump // 追加ジャンプかどうか（trueで多段処理）
+      ) params,
+    ) {
+
+      final (
+        targetXRaw,
+        targetYRaw,
+        jumpPowerRaw,
+        durationSecRaw,
+        continuous_jump_max_num,
+        flag_more_jump
+      ) = params;
+
+      final targetX = _toDouble(targetXRaw);
+      final targetY = _toDouble(targetYRaw);
+      final jumpPower = _toDouble(jumpPowerRaw);
+      final durationSec = _toDouble(durationSecRaw);
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      if (!_jumpingObjects.containsKey(obj)) {
+        // ⭐ 常に今の位置を開始地点にする
+        _jumpingObjects[obj] = _JumpData(
+          startX: obj.position.dx,
+          startY: obj.position.dy,
+          landingX: targetX,
+          landingY: targetY,
+          startTimeMs: now,
+          jumpCount: 1,
+        );
+
+      }
+      else {
+        final data = _jumpingObjects[obj]!;
+
+        if (flag_more_jump &&
+            data.jumpCount < continuous_jump_max_num) {
+
+          data.startY = obj.position.dy;
+          data.startTimeMs = now;
+          data.jumpCount += 1;
+        }
+      }
+
+      final data = _jumpingObjects[obj]!;
+
+      final elapsedSec =
+          (now - data.startTimeMs) / 1000.0;
+
+      final progress =
+          (elapsedSec / durationSec).clamp(0.0, 1.0);
+
+      final newX =
+          data.startX +
+          (data.landingX - data.startX) * progress;
+
+      final baseY =
+          data.startY +
+          (data.landingY - data.startY) * progress;
+
+      final height =
+          4 *
+          jumpPower *
+          progress * (1 - progress);
+
+      final newY = baseY - height;
+
+      // ⭐ progress >= 1.0 で着地完了
+      if (progress >= 1.0) {
+        obj.position =
+            Offset(data.landingX, data.landingY);
+
+        _jumpingObjects.remove(obj);
+
+        // ⭐ 念のため全体クリア（安全設計）
+        if (_jumpingObjects.isEmpty) {
+          resetAllJumpData();
+        }
+
+        return "ok";
+      }
+
+      obj.position = Offset(newX, newY);
+      return "running";
+    }
+
+
   // ============================================================
   // ジャンプメソッド（多段ジャンプ拡張対応設計）
   // 
@@ -1339,6 +1448,73 @@ class ObjectManager {
       obj.position = Offset(newX, newY);
       return "running";
     }
+
+
+  // ============================================================
+  // 落下メソッド
+  // 
+  // 【注意】
+  //  ・ここではrunningリストへの追加はしていません。
+  //  ・「Y座標nまでを落とす」使用のため、ゲームでは推薦しません。
+  //    ストーリー系での使用で楽になるため、実装したものです。
+  // ============================================================
+  static String toFall_arc(
+    WorldObject obj,
+    (
+      WorldObject startObj, // 何のオブジェクトを落下させるか
+      num landingX, // 着地地点x
+      num landingY, // 着地地点y
+      num jumpPower, // ジャンプパワー。
+      num durationSec, // 何秒で
+    ) params,
+  ) {
+    final (
+      startObj,
+      landingXRaw,
+      landingYRaw,
+      jumpPowerRaw,
+      durationSecRaw,
+    ) = params;
+
+    final landingX    = _toDouble(landingXRaw);
+    final landingY    = _toDouble(landingYRaw);
+    final jumpPower   = _toDouble(jumpPowerRaw);
+    final durationSec = _toDouble(durationSecRaw);
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // 初回登録：startObjのpositionを開始点にする
+    if (!_movingObjects.containsKey(obj)) {
+      _movingObjects[obj] = _MoveData(
+        startX: startObj.position.dx, // ← positionから取得
+        startY: startObj.position.dy,
+        targetX: landingX,
+        targetY: landingY,
+        startTimeMs: now,
+      );
+    }
+
+    final data = _movingObjects[obj]!;
+
+    final halfDuration = durationSec / 2.0;
+    final elapsedSec = (now - data.startTimeMs) / 1000.0;
+    final halfProgress = (elapsedSec / halfDuration).clamp(0.0, 1.0);
+    final progress = 0.5 + halfProgress * 0.5;
+
+    final newX = data.startX + (data.targetX - data.startX) * halfProgress;
+    final baseY = data.startY + (data.targetY - data.startY) * halfProgress;
+    final height = 4 * jumpPower * progress * (1 - progress);
+    final newY = baseY - height;
+
+    if (halfProgress >= 1.0) {
+      obj.position = Offset(data.targetX, data.targetY);
+      _movingObjects.remove(obj);
+      return "ok";
+    }
+
+    obj.position = Offset(newX, newY);
+    return "running";
+  }
 
 
   // ============================================================
@@ -1647,7 +1823,9 @@ class ObjectManager {
     // ---------------------------
     for (final task in List<_RunningTask>.from(_runningTasks)) {
 
-      if (task.func == toJump) {
+      if (task.func == toJump ||
+          task.func == toJump_to_ground) 
+      {
 
         final result = task.func(task.obj, task.value);
 
@@ -2303,7 +2481,7 @@ class GameStoryPlayer extends SuperPlayer {
         [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
 
         // アノアノを左側にジャンプさせる。
-        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump_to_ground]],
         
         // 空想もこもこ表示
         [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, this.hidden_xy, this.hidden_xy), 1, ObjectManager.toFollowWithOffset]], // １秒待機用
@@ -2333,14 +2511,14 @@ class GameStoryPlayer extends SuperPlayer {
                                         80.0,
                                         jump_time, 
                                         1, 
-                                        false),0,ObjectManager.toJump]],
-        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 1, ObjectManager.toJump]],
+                                        false),0,ObjectManager.toJump_to_ground]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 1, ObjectManager.toJump_to_ground]],
         [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
                                         world.objects["着地地点"]!.position.dy,
                                         80.0,
                                         jump_time, 
                                         1, 
-                                        false),0,ObjectManager.toJump]],
+                                        false),0,ObjectManager.toJump_to_ground]],
 
         // 現実アノアノが本気の顔になる
         AnimationDict.get("表情追従全解除"),
@@ -2900,7 +3078,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   int continuous_jump_max_num = 1;       // 連続ジャンプ可能数（羽とったらこれを２にすればよし。）
   final Offset hiddenOffset = const Offset(-10000, -10000); // 隠す場所
   final Offset anoanoBiasOffset = const Offset(200, 500); // アノアノのバイアス座標
-  late final List<WorldObject> touchableObjects;
+  late List<WorldObject> touchableObjects;
 
 
   // ==============================
@@ -3175,60 +3353,78 @@ class AdjustFlagPlayer extends SuperPlayer {
     // 今回、オブジェクトに触れていた。(hitListが空じゃなかった)
     if (!world.collisionGimmickPlayer.hitList.isEmpty)
     {
+      final c = world.collisionGimmickPlayer.hitList;
+      debugPrint("hitList:$c");
+
       // すべての触れたオブジェクトを見る（奇跡が起きない限り１ぺとなるのが基本だが。）
       for (final (touched_obj, side) in world.collisionGimmickPlayer.hitList) 
+      {
+        // 北（アノアノの頭）に触れていた時
+        if (side == HitSide.north)
         {
-          // 北（アノアノの頭）に触れていた時
-          if (side == "north"){
-            this.game_over = true;
-          }
-          // 南（アノアノの足）に触れていた時
-          else if (side == "south"){
-            // このフレームで、画面のタッチがなく、落下中であった場合
-            if (
-                !world.receiveInputPlayer.isTouching && // タッチなかった
-                world.gameFallAnimationPlayer.fall_now // 落下中だった
-              ) 
-            {
-              // ================================================================
-              // ジャンプを停止する。
-              // ================================================================
-              // そのオブジェクトの上に着地する。（Yのみobjectの上で固定。）
-              ObjectManager.snapOnTopOfYOnly(anoano_obj, (
-                                                            touched_obj, // ぶつかった相手
-                                                            0, // 0超過にすれば、その分相手より上に上に位置できる。
-                                                          )
-                                            );
-              // 「落下中フラグをfalse」にする。
-              world.gameFallAnimationPlayer.fall_flag_to_false();
-
-              // 「連続ジャンプカウントをfalse」にする。
-              world.gameJumpAnimationPlayer.continuous_jump_count_to_reset();
-
-              // 「runningリストからアノアノのjump関数を削除」する。
-              ObjectManager.removeRunningTask(anoano_obj, (ObjectManager.toJump,));
-            } 
-
-            // 地面に接しているが画面がタップされていた
-            else 
-            {
-              // 何もしない（jumpメソッドを確実に実行させるため）
-            }
-
-            // ゲームオーバーにしない。
-            this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
-          }
-
-          // 西（アノアノの左）に触れていた時
-          else if (side == "west"){
-            // ゲームオーバーにしない。
-            this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
-          }
-          // 東（アノアノの右）に触れていた時
-          else if (side == "east"){
-            this.game_over = true;
-          }
+          debugPrint("$sが北（アノアノの頭）に触れていた");
+          this.game_over = true;
         }
+
+        // 南（アノアノの足）、または内包（オブジェクト先の内側）に触れていた時
+        else if (side == HitSide.south ||
+                  side == HitSide.inside)
+        {
+          debugPrint("$sが南（アノアノの足）に触れていた");
+          // このフレームで、画面のタッチがなく、落下中であった場合
+          final a = world.receiveInputPlayer.isTouching;
+          final b = world.gameFallAnimationPlayer.fall_now;
+          debugPrint("タッチされた:$a");
+          debugPrint("落下中:$b");
+          if (
+              !world.receiveInputPlayer.isTouching && // タッチなかった
+              world.gameFallAnimationPlayer.fall_now // 落下中だった
+            ) 
+          {
+            // ================================================================
+            // ジャンプを停止する。
+            // ================================================================
+            // そのオブジェクトの上に着地する。（Yのみobjectの上で固定。）
+            debugPrint("$sのオブジェクトの上に着地する");
+            ObjectManager.snapOnTopOfYOnly(anoano_obj, (
+                                                          touched_obj, // ぶつかった相手
+                                                          0, // 0超過にすれば、その分相手より上に上に位置できる。
+                                                        )
+                                          );
+            // 「落下中フラグをfalse」にする。
+            world.gameFallAnimationPlayer.fall_flag_to_false();
+
+            // 「連続ジャンプカウントをfalse」にする。
+            world.gameJumpAnimationPlayer.continuous_jump_count_to_reset();
+
+            // 「runningリストからアノアノのjump関数を削除」する。
+            ObjectManager.removeRunningTask(anoano_obj, (ObjectManager.toJump,));
+          } 
+
+          // 地面に接しているが画面がタップされていた
+          else 
+          {
+            debugPrint("ぶつかっているが、画面がタップされていたので、何もしない。");
+            // 何もしない（jumpメソッドを確実に実行させるため）
+          }
+
+          // ゲームオーバーにしない。
+          this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
+        }
+
+        // 西（アノアノの左）に触れていた時
+        else if (side == HitSide.west){
+          debugPrint("$sが西（アノアノの左）に触れていた");
+          // ゲームオーバーにしない。
+          this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
+        }
+        // 東（アノアノの右）に触れていた時
+        else if (side == HitSide.east){
+          debugPrint("$sが東（アノアノの右）に触れていた");
+          this.game_over = true;
+        }
+      }
+
     }
     // 今回オブジェクトに触れていなかった（hitListが空だった）
     else
