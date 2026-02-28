@@ -1248,97 +1248,97 @@ class ObjectManager {
   //  ここではrunningリストへの追加はしていません。
   // ============================================================
   static String toJump(
-    WorldObject obj,
-    (
-      num targetX,        // 着地予定のX座標（最終到達位置）
-      num targetY,        // 着地予定のY座標（最終到達位置）
-      num jumpPower,      // ジャンプの高さ（放物線の頂点の強さ）
-      num durationSec,    // ジャンプにかける時間（秒）
-      int continuous_jump_max_num,   // 最大連続ジャンプ回数（例：2なら二段ジャンプ）
-      bool flag_more_jump // 追加ジャンプかどうか（trueで多段処理）
-    ) params,
-  ) {
+      WorldObject obj,
+      (
+        num targetX,
+        num targetY,
+        num jumpPower,
+        num durationSec,
+        int continuous_jump_max_num,
+        bool flag_more_jump
+      ) params,
+    ) {
 
-    final (
-      targetXRaw,
-      targetYRaw,
-      jumpPowerRaw,
-      durationSecRaw,
-      continuous_jump_max_num,
-      flag_more_jump
-    ) = params;
+      final (
+        targetXRaw,
+        targetYRaw,
+        jumpPowerRaw,
+        durationSecRaw,
+        continuous_jump_max_num,
+        flag_more_jump
+      ) = params;
 
-    final targetX = _toDouble(targetXRaw);
-    final targetY = _toDouble(targetYRaw);
-    final jumpPower = _toDouble(jumpPowerRaw);
-    final durationSec = _toDouble(durationSecRaw);
+      final targetX = _toDouble(targetXRaw);
+      final targetY = _toDouble(targetYRaw);
+      final jumpPower = _toDouble(jumpPowerRaw);
+      final durationSec = _toDouble(durationSecRaw);
 
-    final now = DateTime.now().millisecondsSinceEpoch;
+      final now = DateTime.now().millisecondsSinceEpoch;
 
-    if (!_jumpingObjects.containsKey(obj)) {
-      // ⭐ 常に今の位置を開始地点にする
-      _jumpingObjects[obj] = _JumpData(
-        startX: obj.position.dx,
-        startY: obj.position.dy,
-        landingX: targetX,
-        landingY: targetY,
-        startTimeMs: now,
-        jumpCount: 1,
-      );
+      if (!_jumpingObjects.containsKey(obj)) {
+        // ⭐ 常に今の位置を開始地点にする
+        _jumpingObjects[obj] = _JumpData(
+          startX: obj.position.dx,
+          startY: obj.position.dy,
+          landingX: targetX,
+          landingY: targetY,
+          startTimeMs: now,
+          jumpCount: 1,
+        );
 
-    }
-    else {
+      }
+      else {
+        final data = _jumpingObjects[obj]!;
+
+        if (flag_more_jump &&
+            data.jumpCount < continuous_jump_max_num) {
+
+          data.startY = obj.position.dy;
+          data.startTimeMs = now;
+          data.jumpCount += 1;
+        }
+      }
+
       final data = _jumpingObjects[obj]!;
 
-      if (flag_more_jump &&
-          data.jumpCount < continuous_jump_max_num) {
+      final elapsedSec =
+          (now - data.startTimeMs) / 1000.0;
 
-        data.startY = obj.position.dy;
-        data.startTimeMs = now;
-        data.jumpCount += 1;
-      }
-    }
+      final progress =
+          (elapsedSec / durationSec).clamp(0.0, 1.0);
 
-    final data = _jumpingObjects[obj]!;
+      final newX =
+          data.startX +
+          (data.landingX - data.startX) * progress;
 
-    final elapsedSec =
-        (now - data.startTimeMs) / 1000.0;
+      final baseY =
+          data.startY +
+          (data.landingY - data.startY) * progress;
 
-    final progress =
-        (elapsedSec / durationSec).clamp(0.0, 1.0);
+      final height =
+          4 *
+          jumpPower *
+          progress * (1 - progress);
 
-    final newX =
-        data.startX +
-        (data.landingX - data.startX) * progress;
+      final newY = baseY - height;
 
-    final baseY =
-        data.startY +
-        (data.landingY - data.startY) * progress;
+      // ⭐ 頂点（progress >= 0.5）でジャンプ完了とみなす。
+      // 　 頂点以降の落下はGameFallAnimationPlayerに委ねる。
+      if (progress >= 0.5) {
+        obj.position = Offset(newX, newY); // 頂点位置を反映してから終了
+        _jumpingObjects.remove(obj);
 
-    final height =
-        4 *
-        jumpPower *
-        progress * (1 - progress);
+        // ⭐ 念のため全体クリア（安全設計）
+        if (_jumpingObjects.isEmpty) {
+          resetAllJumpData();
+        }
 
-    final newY = baseY - height;
-
-    if (progress >= 1.0) {
-      obj.position =
-          Offset(data.landingX, data.landingY);
-
-      _jumpingObjects.remove(obj);
-
-      // ⭐ 念のため全体クリア（安全設計）
-      if (_jumpingObjects.isEmpty) {
-        resetAllJumpData();
+        return "ok";
       }
 
-      return "ok";
+      obj.position = Offset(newX, newY);
+      return "running";
     }
-
-    obj.position = Offset(newX, newY);
-    return "running";
-  }
 
 
   // ============================================================
@@ -2474,6 +2474,13 @@ class GameInitPlayer extends SuperPlayer {
           AnimationDict.get("真剣顔")
         ])
     ];
+
+
+    // GameModeで使用されているプレイヤーのすべての初期化メソッドを（init()）を実行する。
+    for (final player in Mode_Game.players) {
+      player.init();
+    }
+
   }
   // 非同期サービスの開始
   
@@ -2642,8 +2649,9 @@ class ReceiveInputPlayer extends SuperPlayer {
   // 🔵 クラス変数（入力保持用）
   // ==============================
   bool isTouching = false;
-  Offset? tapPosition;
+  Offset? tapPosition = null;
   int game_frame_count = 1;
+
 
   @override
   void init() {
@@ -2733,6 +2741,7 @@ class MovingDisturverPlayer extends SuperPlayer {
   bool item_and_disturver_animation_film_3dlist_2_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool item_and_disturver_animation_film_3dlist_3_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool flag_all_film_finished = false; // ✅ 全部終わったか（今は使ってないけど、将来の拡張用）
+
 
   @override
   void init() {
@@ -2886,12 +2895,13 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   // 🔵 クラス変数
   // ==============================
   bool flag_jumping_now = false; // ジャンプ中ならばtrueにする。
+  bool now_fly = false;
+  int continuous_jump_count = 0;   // 現在のジャンプ回数
+  int continuous_jump_max_num = 1;       // 連続ジャンプ可能数（羽とったらこれを２にすればよし。）
   final Offset hiddenOffset = const Offset(-10000, -10000); // 隠す場所
   final Offset anoanoBiasOffset = const Offset(200, 500); // アノアノのバイアス座標
+  late final List<WorldObject> touchableObjects;
 
-  // adjustFlagPlayer用。
-  int continuous_jump_count = 0;   // 現在のジャンプ回数
-  int continuous_jump_max_num = 1;       // 最大ジャンプ回数 ← 何これ謎🌙（2026年2月25日）
 
   // ==============================
   // フィルム再生用キャッシュ
@@ -2907,6 +2917,16 @@ class GameJumpAnimationPlayer extends SuperPlayer {
 
   @override
   void init() {
+    this.touchableObjects = [
+        world.objects["地面"],
+        world.objects["建物_1"],
+        world.objects["建物_2"],
+        world.objects["建物_3"],
+        world.objects["UFO_1"],
+        world.objects["UFO_2"],
+        world.objects["UFO_3"],
+      ].whereType<WorldObject>().toList();
+
     // 初期化（必要なら後で）
     list_2d = [];          
 
@@ -2924,6 +2944,14 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
   }
 
+  void jump_flag_to_false(){
+    this.flag_jumping_now = false;
+  }
+
+  void continuous_jump_count_to_reset(){
+    this.continuous_jump_count = 0;
+  }
+
 
   @override
   void mainScript() {
@@ -2934,51 +2962,40 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     if (world.receiveInputPlayer.isTouching) {
 
       // -------------------------------------------------
-      // 画面がタッチされてかつ、
-      // 現在ジャンプしていない時の処理
-      // -------------------------------------------------
-      if (!this.flag_jumping_now) {
-
-        // 現在ジャンプ中フラグをON
-        this.flag_jumping_now = true;  
-        
-        // 連続ジャンプカウントをインクリメント
-        this.continuous_jump_count = 1;
-
-        // フラグ「現在ジャンプしてません」をfalse
-        world.gameFlagPlayer.now_no_fly = false;
-
-        // ジャンプをする（または、二回目以降ならばジャンプ放物線を遷移することになる。）
-        final result = ObjectManager.toJump(
-          world.objects["アノアノ輪郭"]!,
-          (-150, 100, 300, 0.5, this.continuous_jump_max_num, false),
-        );
-
-        // ジャンプの結果が「running」ならば、running登録。
-        // （登録は上書きなので、毎回実行しても問題ないはず。）
-        if (result == "running") {
-          ObjectManager.addRunningTask(
-            world.objects["アノアノ輪郭"]!, ObjectManager.toJump,
-            (-150, 100, 300, 0.5, this.continuous_jump_max_num, false),
-          );
-        }
-
-
-      // -------------------------------------------------
-      // 画面がタッチされてかつ、
       // （連続ジャンプ数 < 最大連続ジャンプ数）の時
       // -------------------------------------------------
-      } else if (this.continuous_jump_count < this.continuous_jump_max_num) {
-
+      if (this.continuous_jump_count < this.continuous_jump_max_num) {
         // -------------------------------------------------
         // まだジャンプできるので、ジャンプする。
         // -------------------------------------------------
-        // 連続ジャンプ数をインクリメント
-        this.continuous_jump_count += 1;
         
-        // フラグ「現在ジャンプしてません」をfalse
-        world.gameFlagPlayer.now_no_fly = false;
+        // -------------------------------------------------
+        // ジャンプする前の準備
+        // -------------------------------------------------
+        // 周りに何も触れていなければ、n段ジャンプとする。
+        bool isTouchingAnything = false;
+        for (final obj in this.touchableObjects) { // オブジェクトリスト
+          if (ComponentsService.hit(world.objects["アノアノ輪郭"]!, obj)) {
+            isTouchingAnything = true;
+            break;
+          }
+        }
+        if (!isTouchingAnything) {
+          // 連続ジャンプ数をインクリメント
+          this.continuous_jump_count += 1;
+        }
+        else{
+          // n段ジャンプ(n == 1)なので、１を代入する。
+          this.continuous_jump_count = 1;
+        }
+        
+        // フラグ「現在ジャンプしています」をtrue
+        this.now_fly = true;
 
+
+        // -------------------------------------------------
+        // ジャンプする
+        // -------------------------------------------------
         // ジャンプをする（引数に true を取らせているので、空中ジャンプするはず。）
         ObjectManager.toJump(
           world.objects["アノアノ輪郭"]!,
@@ -2992,29 +3009,8 @@ class GameJumpAnimationPlayer extends SuperPlayer {
         );
       }
     }
-
-    // 🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙
-    // アノアノ輪郭のジャンプタスクが一つでも存在したら、falseが返ってくる。
-    bool isJumpRunning = !ObjectManager.hasNoRunningTasksOfObjAndFuncs(
-              world.objects["アノアノ輪郭"]!,
-        [ObjectManager.toJump],
-      );
-
-    if (
-        this.flag_jumping_now && // 現在ジャンプ中 
-        !isJumpRunning // しかし、アノアノ輪郭のジャンプ中タスクがrunningリストに存在しない
-      ) {
-      // 👉 ジャンプが完了した：now_no_fly もここでリセット（着地前提）
-      this.flag_jumping_now = false;
-      this.continuous_jump_count = 0;
-      // adjustFlagPlayer が着地を確認するまで now_no_fly=false のまま落下させる
-      // → GameFallAnimationPlayer に引き渡す
-    }
-    // 🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙
-
   }
 }
-
 
 
 // ========================================================
@@ -3025,31 +3021,29 @@ class GameFallAnimationPlayer extends SuperPlayer {
   // 落下速度
   double fallSpeed = 40;
 
+  // ====================================
+  // フラグ
+  // ====================================
+  bool fall_now = false; // 落下中でtrue
+
   @override
   void init() {}
+
+  void fall_flag_to_false(){
+    this.fall_now = false;
+  }
 
   @override
   void mainScript() {
 
-    // 床になりうるオブジェクトをリスト化
-    final groundList = [
-      world.objects["地面"],
-      world.objects["建物_1"],
-      world.objects["建物_2"],
-      world.objects["建物_3"],
-      world.objects["UFO_1"],
-      world.objects["UFO_2"],
-      world.objects["UFO_3"],
-    ].whereType<WorldObject>()
-    .where((o) => o.enableCollision)
-    .toList();
+    // ジャンプ中ではない なら落下
+    if (!world.gameJumpAnimationPlayer.flag_jumping_now)
+    { 
+      // 「ジャンプ中フラグ」をfalseにする。
+      world.gameJumpAnimationPlayer.jump_flag_to_false();
 
-    // ・ジャンプ中ではない
-    // ・着地中ではない
-    // なら落下
-    if (
-        !world.gameJumpAnimationPlayer.flag_jumping_now && // ジャンプ中ではない
-        !world.gameFlagPlayer.now_no_fly) { // 
+      // 「落下中フラグ」をtrueにする。
+      this.fall_now = true;
 
       // toFallメソッドで落下させる。
       // ✅ runningTasksに登録せず、直接呼び出すだけ
@@ -3064,7 +3058,7 @@ class GameFallAnimationPlayer extends SuperPlayer {
 // 💥 CollisionGimmickPlayer（ぶつかったか調べる係）
 // -----------------------------------------------
 // ここは「当たった？」を調べるだけのクラスだよ。
-// ぶつかったら「だれに」「どっちから」ぶつかったかをメモする。
+// （ぶつかったら「だれに」「どっちから」ぶつかったかをメモする。）
 // ===============================================
 class CollisionGimmickPlayer extends SuperPlayer {
 
@@ -3090,48 +3084,30 @@ class CollisionGimmickPlayer extends SuperPlayer {
   @override
   void mainScript() {
 
-    // ① メモ帳をクリア
+    // ぶつかったリストを空にする。
     hitList.clear();
 
-    // ② ぶつかるかもしれない相手
-    final objects = [
-      world.objects["地面"],
-      world.objects["建物_1"],
-      world.objects["建物_2"],
-      world.objects["建物_3"],
-      world.objects["UFO_1"],
-      world.objects["UFO_2"],
-      world.objects["UFO_3"],
-    ];
+    // このオブジェクトたちに、ぶつかったかどうかを見る。
+    final objects = world.gameJumpAnimationPlayer.touchableObjects;
 
-    // ③ 主役
+    // アノアノ。
     final player = world.objects["アノアノ輪郭"];
     if (player == null) return;
 
-    // ④ 当たり判定を集める
+    // オブジェクトリストをforで回す。
     for (final obj in objects) {
-      if (obj == null) continue;
 
-      final side = ComponentsService.hitSide(player, obj);
-      if (side != HitSide.none) {
+      // このオブジェクトが、アノアノにぶつかったかを判定する。
+      final side = ComponentsService.hitSide(player, obj!);
+
+      // ぶつかっていなければpass
+      if (side == HitSide.none){
+      }
+
+      // ぶつかっていれば、「ぶつかったリスト」に登録
+      else{
         hitList.add((obj, side));
       }
-    }
-
-    // ⑤ ✅ このフレームの「着地（south）」候補を作る
-    world.gameFlagPlayer.groundList.clear();
-
-    for (final hit in hitList) {
-      final obj = hit.$1;
-      final side = hit.$2;
-
-      if (side == HitSide.south) {
-        // ✅ south = 乗っかった（着地）
-        world.gameFlagPlayer.groundList.add(obj);
-      }
-      // west はセーフで無視
-      // north/east はゲームオーバー判定は Resolve に任せてもいいし、
-      // ここで立ててもいい。今回は Resolve に一本化するので何もしない。
     }
   }
 }
@@ -3148,6 +3124,10 @@ class AdjustFlagPlayer extends SuperPlayer {
   late List<List<List<dynamic>>> animation_film_3dlist_for_stop_jump;
   late List<List<List<dynamic>>> animation_film_3dlist_for_ride_object;
   
+  // ==========================================================
+  // フラグ
+  // ==========================================================
+  bool game_over = false;
 
   // ==========================================================
   // フィルム再生用キャッシュ
@@ -3168,7 +3148,7 @@ class AdjustFlagPlayer extends SuperPlayer {
     // ============================================
     // アノアノジャンプをストップするフィルム
     this.animation_film_3dlist_for_stop_jump = [
-        // アノアノジャンプをストップ
+        // runningリストから削除することで、ストップ。
         [[world.objects["アノアノ輪郭"]!, (ObjectManager.toJump,), 0, ObjectManager.removeRunningTask]],
       ];
   }
@@ -3177,10 +3157,10 @@ class AdjustFlagPlayer extends SuperPlayer {
   void mainScript() {
 
     // ① 主役
-    final player = world.objects["アノアノ輪郭"];
-    if (player == null) return;
+    final anoano_obj = world.objects["アノアノ輪郭"];
+    if (anoano_obj == null) return;
 
-    // ② ぶつかったメモ帳
+    // ② ぶつかったオブジェクトリスト
     final hitList = world.collisionGimmickPlayer.hitList;
 
     // デバッグ表示
@@ -3192,46 +3172,68 @@ class AdjustFlagPlayer extends SuperPlayer {
     }).join(' | ');
     debugPrint('HIT = $s');
 
-    // ③ ✅ ゲームオーバー判定：north / east だけ危険
-    for (final hit in hitList) {
-      final side = hit.$2;
+    // 今回、オブジェクトに触れていた。(hitListが空じゃなかった)
+    if (!world.collisionGimmickPlayer.hitList.isEmpty)
+    {
+      // すべての触れたオブジェクトを見る（奇跡が起きない限り１ぺとなるのが基本だが。）
+      for (final (touched_obj, side) in world.collisionGimmickPlayer.hitList) 
+        {
+          // 北（アノアノの頭）に触れていた時
+          if (side == "north"){
+            this.game_over = true;
+          }
+          // 南（アノアノの足）に触れていた時
+          else if (side == "south"){
+            // このフレームで、画面のタッチがなく、落下中であった場合
+            if (
+                !world.receiveInputPlayer.isTouching && // タッチなかった
+                world.gameFallAnimationPlayer.fall_now // 落下中だった
+              ) 
+            {
+              // ================================================================
+              // ジャンプを停止する。
+              // ================================================================
+              // そのオブジェクトの上に着地する。（Yのみobjectの上で固定。）
+              ObjectManager.snapOnTopOfYOnly(anoano_obj, (
+                                                            touched_obj, // ぶつかった相手
+                                                            0, // 0超過にすれば、その分相手より上に上に位置できる。
+                                                          )
+                                            );
+              // 「落下中フラグをfalse」にする。
+              world.gameFallAnimationPlayer.fall_flag_to_false();
 
-      final bool isDangerHit =
-          (side == HitSide.north) ||
-          (side == HitSide.east);
+              // 「連続ジャンプカウントをfalse」にする。
+              world.gameJumpAnimationPlayer.continuous_jump_count_to_reset();
 
-      if (isDangerHit) {
-        world.gameoverJudgmentPlayer.flag_gameover = true;
-        // 1個でも危険なら確定でOKなら break して軽量化してもよい
-        // break;
-      }
+              // 「runningリストからアノアノのjump関数を削除」する。
+              ObjectManager.removeRunningTask(anoano_obj, (ObjectManager.toJump,));
+            } 
+
+            // 地面に接しているが画面がタップされていた
+            else 
+            {
+              // 何もしない（jumpメソッドを確実に実行させるため）
+            }
+
+            // ゲームオーバーにしない。
+            this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
+          }
+
+          // 西（アノアノの左）に触れていた時
+          else if (side == "west"){
+            // ゲームオーバーにしない。
+            this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
+          }
+          // 東（アノアノの右）に触れていた時
+          else if (side == "east"){
+            this.game_over = true;
+          }
+        }
     }
-
-    // ④ ✅ 着地判定：south = 乗っかった
-    final landedTargets = world.gameFlagPlayer.groundList;
-
-    if (landedTargets.isNotEmpty) {
-      // 一番近い床を選ぶ
-      ride_object = ComponentsService.nearestObject(player, landedTargets);
-
-      if (ride_object != null) {
-        // ジャンプを止める
-        ObjectManager.removeRunningTask(player, (ObjectManager.toJump,));
-
-        // 床の上にYだけスナップ
-        ObjectManager.snapOnTopOfYOnly(player, (ride_object!, 10.4));
-
-        // 着地フラグ
-        world.gameFlagPlayer.now_no_fly = true;
-
-        // ジャンプ状態リセット
-        world.gameJumpAnimationPlayer.flag_jumping_now = false;
-        world.gameJumpAnimationPlayer.continuous_jump_count = 0;
-      }
-    } else {
-      // 空中
-      ride_object = null;
-      world.gameFlagPlayer.now_no_fly = false;
+    // 今回オブジェクトに触れていなかった（hitListが空だった）
+    else
+    {
+      // 何もしない
     }
 
     // デバッグ用フレームカウント
@@ -3244,32 +3246,27 @@ class AdjustFlagPlayer extends SuperPlayer {
 // ==============================================================
 // 💀 GameoverJudgmentPlayer
 // --------------------------------------------------------------
-// 【役割】
-//  ・adjustFlagPlayer が立てた
-//    flag_gameover を監視
-//  ・ON になったらゲーム終了処理へ移行
-//
-// 【目的】
-//  ・まずはデバッグ用の最小実装
-//  ・ゲームオーバー状態を確実に検出する
+//  ゲームオーバー状態を検出する
 // ==============================================================
 class GameoverJudgmentPlayer extends SuperPlayer {
 
   // ==========================================================
   // 🔴 ゲームオーバーフラグ
-  // adjustFlagPlayer から ON にされる
   // ==========================================================
   bool flag_gameover = false;
 
   @override
   void init() {
-    // 起動時はゲームオーバーではない
+    // 起動時はゲームオーバーではない(モード切替時に実行される)
     flag_gameover = false;
   }
 
   @override
   void mainScript() {
-    // 特になし。
+    if (world.adjustFlagPlayer.game_over)
+    {
+      flag_gameover = true;
+    }
   }
 }
 
@@ -3363,31 +3360,31 @@ class GameOverInputPlayer extends SuperPlayer {
   @override
   void mainScript() {
 
-    final button       = world.objects["もう一回やる？ボタン"];
+    final mouikkai_button       = world.objects["もう一回やる？ボタン"];
     final sadRightEye  = world.objects["悲しい右目"];
     final sadLeftEye   = world.objects["悲しい左目"];
     final sadMouth     = world.objects["悲しい口"];
 
-    if (button == null ||
+    if (mouikkai_button == null ||
         sadRightEye == null ||
         sadLeftEye == null ||
         sadMouth == null) return;
 
-    // ==============================
-    // 🖱 クリック判定
-    // ==============================
-    if (ComponentsService.isClicked(button)) {
-      final name = ComponentsService.getObjectName(button);
+    // ============================================================
+    // 🖱 「もう一回やる？」ボタンのクリック判定
+    // ============================================================
+    if (ComponentsService.isClicked(mouikkai_button)) {
+      final name = ComponentsService.getObjectName(mouikkai_button);
       debugPrint("$name が押されました。");
 
       flag_one_more_start_button = true;
 
       // ==============================
-      // 👻 全部 hidden に戻す
+      // 👻 ゲームモードの
       // ==============================
 
       ObjectManager.toSetPosition(
-        button,
+        mouikkai_button,
         (hidden_xy.dx, hidden_xy.dy),
       );
 
