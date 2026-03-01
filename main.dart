@@ -115,7 +115,7 @@ class SystemEnvService
 // 🎬 アニメーション辞書クラス
 // ============================================================
 class AnimationDict {
-  static double hidden_xy = -10000.0;
+  static double hidden_xy = 10000.0;
 
   // ----------------------------------------------------------
   // 🧩 複数の3次元リスト（フィルム）を受け取り、
@@ -321,9 +321,26 @@ class ComponentsService {
     }
 
     // ================================
-    // 🟢 東（残り全部）
+    // 🟢 東（bの左面・下70%のみ判定）
     // ================================
-    return HitSide.east;
+
+    // bの左面のY範囲を計算
+    final double bLeftFaceTop    = rb.top;
+    final double bLeftFaceBottom = rb.bottom;
+    final double bLeftFaceHeight = bLeftFaceBottom - bLeftFaceTop;
+
+    // 下70%の開始Y（上30%をスキップ）
+    final double eastJudgeStartY = bLeftFaceTop + bLeftFaceHeight * 0.3;
+
+    // aの中心Yが「下70%の範囲内」にあるか
+    final double aCenterY = ra.center.dy;
+
+    if (aCenterY >= eastJudgeStartY && aCenterY <= bLeftFaceBottom) {
+      return HitSide.east;
+    }
+
+    // 上30%に当たっていた場合はnone（スルー）
+    return HitSide.none;
   }
 
 
@@ -447,12 +464,12 @@ class AnimationFilmService {
     // ===========================
     // ⏱ 実行タイミング
     // ===========================
-    debugPrint("0");
-    debugPrint("$endTime");
-    debugPrint("$nowSec");
+    // debugPrint("0");
+    // debugPrint("$endTime");
+    // debugPrint("$nowSec");
     
     if (endTime <= nowSec) {
-      debugPrint("1");
+      // debugPrint("1");
       endTime = null;
 
       // ===========================
@@ -462,7 +479,7 @@ class AnimationFilmService {
       if (frameResult == "ok" &&
           currentIndex < animationFilm3DList.length) {
         
-        debugPrint("2");
+        // debugPrint("2");
 
         // ３次元リストから２次元リストを取得。
         list2d = animationFilm3DList[currentIndex];
@@ -546,8 +563,7 @@ class AnimationFilmService {
     while (currentIndex < animationFilm3DList.length) {
       if (steps++ > maxSteps) {
         // 無限ループ対策：危険なので止める
-        // debugPrint等で気づけるようにする
-        debugPrint("⚠ runAnimationFilmSkipTime: maxStepsに到達。フィルムが無限/過大の可能性");
+        // debugPrint("⚠ runAnimationFilmSkipTime: maxStepsに到達。フィルムが無限/過大の可能性");
         break;
       }
 
@@ -658,6 +674,7 @@ class WorldPool {
   AdjustFlagPlayer adjustFlagPlayer = AdjustFlagPlayer(); // コライダー判定フラグ処理
   GameJumpAnimationPlayer gameJumpAnimationPlayer = GameJumpAnimationPlayer(); // ユーザからの入力判断
   GameFallAnimationPlayer  gameFallAnimationPlayer  = GameFallAnimationPlayer(); // ユーザからの入力判断
+  PointPlayer pointPlayer = PointPlayer(); // 点数管理
   GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
   GameOverDisplayPlayer gameOverDisplayPlayer = GameOverDisplayPlayer(); // ゲームオーバーの画面を作る。
   GameOverInputPlayer gameOverInputPlayer = GameOverInputPlayer(); // ゲームオーバー画面でのユーザからの入力操作で動く。
@@ -721,23 +738,81 @@ class ObjectManager {
 
 
   // ============================================================
-  // ✅ runningTasks 内に、(obj, func) が1つでもあれば false
-  // （＝指定ペアが1つも無ければ true）
+  // 🧹 移動データを全部クリア
   // ============================================================
-  static bool hasNoRunningTasksOfObjAndFuncs(
+  static void clearMovingObjects() {
+    _movingObjects.clear();
+  }
+
+
+  // ============================================================
+  // 📐 複数オブジェクトを等間隔で配置する
+  // ・objs    : 配置したいオブジェクトのリスト
+  // ・startX  : 先頭オブジェクトのX座標
+  // ・startY  : 先頭オブジェクトのY座標
+  // ・gapX    : オブジェクト間のX間隔（右方向が正）
+  // ・gapY    : オブジェクト間のY間隔（下方向が正）
+  // 
+  // 使い方例（横一列に並べる）：
+  // ObjectManager.toArrangeEvenly(
+  //   [obj1, obj2, obj3],
+  //   (0, 100, 60, 0),
+  // );
+  //
+  // 使い方例（縦一列に並べる）：
+  // ObjectManager.toArrangeEvenly(
+  //   [obj1, obj2, obj3],
+  //   (0, 0, 0, 80),
+  // );
+  // ============================================================
+  static String toArrangeEvenly(
+    List<WorldObject> objs,
+    (
+      num startX, // 先頭のX座標
+      num startY, // 先頭のY座標
+      num gapX,   // X方向の間隔
+      num gapY,   // Y方向の間隔
+    ) params,
+  ) {
+    final (startXRaw, startYRaw, gapXRaw, gapYRaw) = params;
+
+    final double startX = _toDouble(startXRaw);
+    final double startY = _toDouble(startYRaw);
+    final double gapX   = _toDouble(gapXRaw);
+    final double gapY   = _toDouble(gapYRaw);
+
+    // リストが空なら何もしない
+    if (objs.isEmpty) return "ok";
+
+    // 先頭から順に、間隔×インデックスぶんずらして配置
+    for (int i = 0; i < objs.length; i++) {
+      objs[i].position = Offset(
+        startX + gapX * i,
+        startY + gapY * i,
+      );
+    }
+
+    return "ok";
+  }
+
+
+  // ============================================================
+  // ✅ 指定objで、指定funcs内のいずれかが
+  //     running登録されていれば true
+  // ============================================================
+  static bool hasRunningTaskOfObjAndFuncs(
     WorldObject obj,
-    List<Function> funcs,
+    Iterable<Function> funcs,
   ) {
     for (final t in _runningTasks) {
       if (!identical(t.obj, obj)) continue;
-
       for (final f in funcs) {
         if (identical(t.func, f)) {
-          return false;
+          return true;
         }
       }
     }
-    return true;
+    return false;
   }
 
 
@@ -803,9 +878,9 @@ class ObjectManager {
 
     // デバッグのため名前を取得
     String name = ComponentsService.getObjectName(obj);
-    debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
-    debugPrint("$name");
-    debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
+    // debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
+    // debugPrint("$name");
+    // debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
     
 
     final (ground, extraGapY) = params;
@@ -855,6 +930,15 @@ class ObjectManager {
 
     return "ok";
   }
+
+
+  // ============================================================
+  // 🧹 runningTasks を全部クリア
+  // ============================================================
+  static void clearAllRunningTasks() {
+    _runningTasks.clear();
+  }
+
 
 
   // ============================================================
@@ -937,62 +1021,95 @@ class ObjectManager {
   }
 
 
-  // ============================================================
+// ============================================================
   // 🎲 ランダム配置（左上・右下で指定：おこちゃま版）
-  // 使い方：(leftX, topY, rightX, bottomY, seed, margin)
+  // 使い方：(leftX, topY, rightX, bottomY, seed, margin, avoidObjects)
   // ・座標が逆でもOK（自動で左右・上下を直す）
   // ・seed は null で毎回ランダム / 数字で再現
   // ・margin は省略OK：端っこから内側にする余白
+  // ・avoidObjects：重なりを避けたいオブジェクト一覧
   // ============================================================
   static String toRandomizePositionByCorners(
     WorldObject obj,
     (
-      num leftX,     // 左上X
-      num topY,      // 左上Y
-      num rightX,    // 右下X
-      num bottomY,   // 右下Y
-      int? seed,     // nullなら毎回ランダム
-      num? margin,   // 省略OK：端っこ回避
+      num leftX,
+      num topY,
+      num rightX,
+      num bottomY,
+      int? seed,
+      num? margin,
+      List<WorldObject> avoidObjects, // 🆕 避けたいオブジェクト一覧
     ) params,
   ) {
-    final (leftRaw, topRaw, rightRaw, bottomRaw, seed, marginRaw) = params;
+    // 🔧 avoidObjects も含めて全部展開
+    final (leftRaw, topRaw, rightRaw, bottomRaw, seed, marginRaw, avoidObjects) = params;
 
-    // ① num → double
     final x1 = _toDouble(leftRaw);
     final y1 = _toDouble(topRaw);
     final x2 = _toDouble(rightRaw);
     final y2 = _toDouble(bottomRaw);
 
-    // ② 左右・上下が逆でも安全に直す
     double left   = min(x1, x2);
     double right  = max(x1, x2);
     double top    = min(y1, y2);
     double bottom = max(y1, y2);
 
-    // ③ 余白（省略なら0）
     final m = (marginRaw == null) ? 0.0 : _toDouble(marginRaw);
 
-    // margin で範囲が壊れない時だけ縮める
-    if (right - left >= m * 2) {
-      left += m;
-      right -= m;
-    }
-    if (bottom - top >= m * 2) {
-      top += m;
-      bottom -= m;
-    }
+    if (right - left >= m * 2) { left += m; right -= m; }
+    if (bottom - top >= m * 2) { top  += m; bottom -= m; }
 
-    // ④ 乱数
     final rng = (seed == null) ? Random() : Random(seed);
 
-    // ⑤ 幅/高さが0でも落ちない
     final w = right - left;
     final h = bottom - top;
 
-    final x = (w <= 0) ? left : left + w * rng.nextDouble();
-    final y = (h <= 0) ? top  : top  + h * rng.nextDouble();
+    Offset candidate = Offset(
+      (w <= 0) ? left : left + w * rng.nextDouble(),
+      (h <= 0) ? top  : top  + h * rng.nextDouble(),
+    );
 
-    obj.position = Offset(x, y);
+    // =============================================
+    // 🆕 重なり回避ループ
+    // =============================================
+    if (avoidObjects.isNotEmpty) {
+      for (int i = 0; i < 30; i++) { // 🔧 maxTries → 30 に直接指定
+
+        final cx = (w <= 0) ? left : left + w * rng.nextDouble();
+        final cy = (h <= 0) ? top  : top  + h * rng.nextDouble();
+        candidate = Offset(cx, cy);
+
+        // objの当たり判定サイズを推定（ImageObject / GifObject 対応）
+        double objW = 0, objH = 0;
+        if (obj is ImageObject) { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
+        else if (obj is GifObject) { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
+
+        // 候補地点でのコライダー矩形を仮想構築
+        final candidateRect = Rect.fromCenter(
+          center: candidate,
+          width: objW,
+          height: objH,
+        );
+
+        // すべての「避けるべきオブジェクト」と重ならないか確認
+        bool overlaps = false;
+        for (final avoid in avoidObjects) {
+          final avoidRect = avoid.colliderRect;
+          if (avoidRect == null) continue;
+          if (candidateRect.overlaps(avoidRect)) {
+            overlaps = true;
+            break;
+          }
+        }
+
+        // 重ならなければ採用 🎯
+        if (!overlaps) break;
+
+        // 重なったまま最終試行なら candidateをそのまま妥eborg採用
+      }
+    }
+
+    obj.position = candidate;
     return "ok";
   }
 
@@ -1670,37 +1787,38 @@ class ObjectManager {
     (
       WorldObject startObj,
       WorldObject targetObj,
-      num speedPerSec
+      num speedPerSec,
+      num offsetX, // 🆕 出発地点のXバイアス
+      num offsetY, // 🆕 出発地点のYバイアス
     ) params,
   ) {
-
     final (
       startObj,
       targetObj,
-      speedRaw
+      speedRaw,
+      offsetXRaw, // 🆕
+      offsetYRaw, // 🆕
     ) = params;
 
-    final speed = _toDouble(speedRaw);
-
+    final speed   = _toDouble(speedRaw);
+    final offsetX = _toDouble(offsetXRaw); // 🆕
+    final offsetY = _toDouble(offsetYRaw); // 🆕
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    final startX = startObj.position.dx;
-    final startY = startObj.position.dy;
+    final startX = startObj.position.dx + offsetX; // 🆕 バイアス適用
+    final startY = startObj.position.dy + offsetY; // 🆕 バイアス適用
     final targetX = targetObj.position.dx;
 
     // ------------------------------------------
     // 初回登録
     // ------------------------------------------
     if (!_movingObjects.containsKey(obj)) {
-
-      // 開始地点へ強制セット
       obj.position = Offset(startX, startY);
-
       _movingObjects[obj] = _MoveData(
         startX: startX,
         startY: startY,
         targetX: targetX,
-        targetY: startY, // Y固定
+        targetY: startY, // Y固定（バイアス込みのstartY）
         startTimeMs: now,
       );
     }
@@ -2148,7 +2266,7 @@ class InitPlayer extends SuperPlayer {
         layer: 0, // 一番奥
       );
 
-      debugPrint("背景を作りました。");
+      // debugPrint("背景を作りました。");
       this.background_created = true;
     }
   }
@@ -2158,7 +2276,7 @@ class InitPlayer extends SuperPlayer {
 // ホーム画面初期化モード
 class HomeInitPlayer extends SuperPlayer {
   bool initialized = false;
-  double hidden_xy = -10000;
+  double hidden_xy = 10000;
 
   // __init__(self)に同じ
   @override
@@ -2316,7 +2434,7 @@ class HomePlayer extends SuperPlayer {
     if (button != null &&
         ComponentsService.isClicked(button)) {
 
-      debugPrint("🔥 スタートボタンが押されました");
+      // debugPrint("🔥 スタートボタンが押されました");
       flag_start_button = true;
     }
 
@@ -2329,7 +2447,7 @@ class HomePlayer extends SuperPlayer {
 class GameStoryPlayer extends SuperPlayer {
   // class変数
   bool flag_story_end = false;
-  double hidden_xy = -10000.0;
+  double hidden_xy = 10000.0;
 
   // ボタン管理
   bool flag_skip_button = false;
@@ -2458,7 +2576,7 @@ class GameStoryPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "着地地点",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(-150, 100),
+      position: Offset(-150, 122),
       width: 30,
       height: 30,
       layer: 101, // 表示順番
@@ -2481,7 +2599,7 @@ class GameStoryPlayer extends SuperPlayer {
         [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
 
         // アノアノを左側にジャンプさせる。
-        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 0, ObjectManager.toJump_to_ground]],
+        [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx, world.objects["着地地点"]!.position.dy, 300, 0.5, 1, false), 0, ObjectManager.toJump_to_ground]],
         
         // 空想もこもこ表示
         [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, this.hidden_xy, this.hidden_xy), 1, ObjectManager.toFollowWithOffset]], // １秒待機用
@@ -2556,7 +2674,7 @@ class GameStoryPlayer extends SuperPlayer {
     final button = world.objects["スキップボタン"];
     if (button != null &&
         ComponentsService.isClicked(button)) {
-      debugPrint("🐇 スキップボタンが押されました");
+      // debugPrint("🐇 スキップボタンが押されました");
       this.flag_skip_button = true;
 
       // スキップの代わりに、高速でアニメを終わらせる。
@@ -2581,6 +2699,19 @@ class GameStoryPlayer extends SuperPlayer {
         // ストーリーは終了したことにする。
         this.flag_story_end = true;
       }
+
+      // さらに、スキップ後の残骸を掃除（つぎはぎコーディングだ、、）
+      ObjectManager.resetAllJumpData();
+      // アノアノのジャンプrunningTaskも削除
+      final anoano = world.objects["アノアノ輪郭"];
+      if (anoano != null) {
+        ObjectManager.removeRunningTask(anoano, (ObjectManager.toJump,));
+        ObjectManager.removeRunningTask(anoano, (ObjectManager.toJump_to_ground,));
+      }
+
+      if (ObjectManager.hasNoRunningMovementTasks()) {
+        this.flag_story_end = true;
+      }
     }
   }
 }
@@ -2600,7 +2731,6 @@ class GameInitPlayer extends SuperPlayer {
   // ※いまの設計だと「見た目サイズ＝コライダーサイズ」になる（GifObjectのcolliderRectがwidth/height参照）
   // ----------------------------
 
-  // 建物サイズ（個別）
   double tatemono_1_size = 130;
   double tatemono_2_size = 100;
   double tatemono_3_size = 80;
@@ -2611,8 +2741,8 @@ class GameInitPlayer extends SuperPlayer {
   double ufo_3_size = 40;
 
   // アイテムサイズ（個別）
-  double item_hane_1_width = 500;
-  double item_hane_1_height = 1000;
+  double item_hane_1_width = 40;
+  double item_hane_1_height = 40;
 
   // フィルム再生用キャッシュ
   String frame_result = "ok";
@@ -2626,6 +2756,56 @@ class GameInitPlayer extends SuperPlayer {
   // __init__(self)に同じ
   @override
   void init() {
+
+    // ============================================
+    // ゲーム再開時のフラグリセット
+    // （2回目以降のゲーム開始でも、
+    // 　前回の状態が残らないようにする。）
+    // ============================================
+
+    // GameInitPlayer自身のフィルムキャッシュをリセット
+    // （前回のゲームの続きから再生されないように。）
+    this.frame_result = "ok";
+    this.end_time = null;
+    this.currentIndex = 0;
+    this.flag_all_film_finished = false;
+
+    // GameOverDisplayPlayer のフィルムキャッシュをリセット
+    // （「もう一回やる？」ボタンの表示が残らないように。）
+    world.gameOverDisplayPlayer.frame_result = "ok";
+    world.gameOverDisplayPlayer.end_time = null;
+    world.gameOverDisplayPlayer.currentIndex = 0;
+    world.gameOverDisplayPlayer.film_finished = false;
+
+    // AdjustFlagPlayer のフラグをリセット
+    // （前回のゲームオーバー判定が持ち越されないように。）
+    world.adjustFlagPlayer.game_over = false;
+    world.adjustFlagPlayer.ground_now = false;
+
+    // GameoverJudgmentPlayer のフラグをリセット
+    // （ゲームオーバー状態が次回に持ち越されないように。）
+    world.gameoverJudgmentPlayer.flag_gameover = false;
+
+    // GameJumpAnimationPlayer のジャンプ状態をリセット
+    // （ジャンプ中フラグや連続ジャンプカウントが残らないように。）
+    world.gameJumpAnimationPlayer.flag_jumping_now = false;
+    world.gameJumpAnimationPlayer.continuous_jump_count = 0;
+    world.gameJumpAnimationPlayer.continuous_jump_max_num = 1; // 🆕 羽リセット
+
+    // GameFallAnimationPlayer の落下状態をリセット
+    // （落下中フラグと座標記録が残らないように。）
+    world.gameFallAnimationPlayer.fall_now = false;
+    world.gameFallAnimationPlayer.frameStartPosition = null;
+    world.gameFallAnimationPlayer.frameEndPosition = null;
+
+    // ObjectManager のジャンプデータをリセット
+    // （前回のジャンプ放物線データが残らないように。）
+    ObjectManager.resetAllJumpData();
+
+    // GameModeで使用されているプレイヤーのすべての初期化メソッドを（init()）を実行する。
+    for (final player in Mode_Game.players) {
+      player.init();
+    }
 
     list_2d = [];          // ★これを追加
 
@@ -2646,6 +2826,14 @@ class GameInitPlayer extends SuperPlayer {
            [world.objects["スキップボタン"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
           ],
 
+          // アノアノを初期位置に瞬間移動
+          [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
+                                          world.objects["着地地点"]!.position.dy,
+                                          80.0,
+                                          0, 
+                                          1, 
+                                          false),0,ObjectManager.toJump_to_ground]],
+
           // 真剣顔に変更
           AnimationDict.get("表情追従全解除"), 
           AnimationDict.get("表情全隠し"), 
@@ -2660,7 +2848,6 @@ class GameInitPlayer extends SuperPlayer {
     }
 
   }
-  // 非同期サービスの開始
   
   @override
   void mainScript() 
@@ -2682,9 +2869,9 @@ class GameInitPlayer extends SuperPlayer {
         enableCollision: true,
         layer: 401, // 表示順番
         // 見た目より大きいコライダー
-        collisionSize: const Size(100, 100),
-        // 少し上に寄せる
-        collisionOffset: const Offset(0, 0),
+        collisionSize: const Size(60, 100),
+        // 少し右に寄せる
+        collisionOffset: const Offset(18, 0),
       );
       // UFO
       ObjectCreator.createGIF(
@@ -2711,6 +2898,10 @@ class GameInitPlayer extends SuperPlayer {
         height: this.tatemono_2_size,
         enableCollision: true,
         layer: 403, // 表示順番
+        // 見た目より大きいコライダー
+        collisionSize: const Size(40, 80),
+        // 少し右に寄せる
+        collisionOffset: const Offset(14, 10),
       );
       // UFO
       ObjectCreator.createGIF(
@@ -2737,6 +2928,10 @@ class GameInitPlayer extends SuperPlayer {
         height: this.tatemono_3_size,
         enableCollision: true,
         layer: 405, // 表示順番
+        // 見た目より大きいコライダー
+        collisionSize: const Size(40, 80),
+        // 少し右に寄せる
+        collisionOffset: const Offset(14, 10),
       );
       // UFO
       ObjectCreator.createGIF(
@@ -2840,19 +3035,43 @@ class ReceiveInputPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "障害物出発地点",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(50, 100),
+      position: Offset(100, 100),
       width: 10,
       height: 10,
       layer: 600000, // 表示順番
+      enableCollision: true, // ★これ
+      // 見た目より大きいコライダー
+      collisionSize: const Size(50, 50),
+      // 少し上に寄せる
+      collisionOffset: const Offset(0, 0),
     );
     // 障害物出発地点
     ObjectCreator.createImage(
       objectName: "障害物出発地点_ランダム",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(50, 100),
-      width: 10,
-      height: 10,
+      width: 50,
+      height: 50,
       layer: 600000, // 表示順番
+      enableCollision: true, // ★これ
+      // 見た目より大きいコライダー
+      collisionSize: const Size(50, 50),
+      // 少し上に寄せる
+      collisionOffset: const Offset(0, 0),
+    );
+    // 障害物出発地点
+    ObjectCreator.createImage(
+      objectName: "障害物出発地点_ランダム_2",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(50, 100),
+      width: 50,
+      height: 50,
+      layer: 600000, // 表示順番
+      enableCollision: true, // ★これ
+      // 見た目より大きいコライダー
+      collisionSize: const Size(50, 50),
+      // 少し上に寄せる
+      collisionOffset: const Offset(0, 0),
     );
     // 障害物終点
     ObjectCreator.createImage(
@@ -2862,6 +3081,7 @@ class ReceiveInputPlayer extends SuperPlayer {
       width: 10,
       height: 10,
       layer: 600000, // 表示順番
+            
     );
   }
 
@@ -2942,53 +3162,71 @@ class MovingDisturverPlayer extends SuperPlayer {
     // 出発地点を決定させる。🌙
     // ---------------------------------------------
     this.ufo_start_ramdom_put = [
-      [[world.objects["障害物出発地点_ランダム"], (200, 0, 400, 50, null, 0), 0, ObjectManager.toRandomizePositionByCorners]],
+      [[world.objects["障害物出発地点_ランダム"],
+        (200, 0, 400, 50, null, 0,
+          <WorldObject>[
+            world.objects["障害物出発地点"]!,
+            world.objects["障害物出発地点_ランダム_2"]!,
+          ]
+        ), 0, ObjectManager.toRandomizePositionByCorners],
+
+      [world.objects["障害物出発地点_ランダム_2"],
+        (200, 0, 400, 50, null, 0,
+          <WorldObject>[
+            world.objects["障害物出発地点"]!,
+            world.objects["障害物出発地点_ランダム"]!,
+          ]
+        ), 0, ObjectManager.toRandomizePositionByCorners],
+      ],
     ];
 
 
     // マップPattern１
-    // ---------------------------------------------
-    // 🧩 パターン1の「動かし方」
-    // ・建物_1 と UFO_1 を動かす
-    // ・moveToObjectToX：スタート地点に置いて、ターゲットのXまでスライドする
-    // ・待ち時間(ここでは 1 )が入ってるので、フィルム的には「1秒ごとに更新」寄りになる
-    // ---------------------------------------------
-    this.item_and_disturver_animation_film_3dlist_1 = [
-        // 邪魔者の座標を動かす。
-        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX]],
-      ];  
+        // ---------------------------------------------
+        // 🧩 パターン1の「動かし方」
+        // ・建物_1 と UFO_1 を動かす
+        // ・moveToObjectToX：スタート地点に置いて、ターゲットのXまでスライドする
+        // ・待ち時間(ここでは 1 )が入ってるので、フィルム的には「1秒ごとに更新」寄りになる
+        // ---------------------------------------------
+        this.item_and_disturver_animation_film_3dlist_1 = [
+            // 邪魔者の座標を動かす。
+            [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, -10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+            //  [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+          ];
 
-    // マップPattern２
-    // ---------------------------------------------
-    // 🧩 パターン2の「動かし方」
-    // ※いまは中身がパターン1と同じ（つまり見た目は変わらない）
-    // 今後「建物_2」「UFO_2」を動かす等に増やすと、切替の意味が出るよ
-    // ---------------------------------------------
-    this.item_and_disturver_animation_film_3dlist_2 = [
-        // 邪魔者の座標を動かす。
-        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX]],
-      ];  
+        // マップPattern２
+        // ---------------------------------------------
+        // 🧩 パターン2の「動かし方」
+        // ※いまは中身がパターン1と同じ（つまり見た目は変わらない）
+        // 今後「建物_2」「UFO_2」を動かす等に増やすと、切替の意味が出るよ
+        // ---------------------------------------------
+        this.item_and_disturver_animation_film_3dlist_2 = [
+            // 邪魔者の座標を動かす。
+            [[world.objects["建物_2"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 2), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+            //  [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            [world.objects["UFO_2"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+          ];
 
-    // マップPattern３
-    // ---------------------------------------------
-    // 🧩 パターン3の「動かし方」
-    // ※これも今はパターン1と同じ
-    // だから「currentPatternが変わっても挙動が同じ」に見える可能性がある
-    // ---------------------------------------------
-    this.item_and_disturver_animation_film_3dlist_3 = [
-        // 邪魔者の座標を動かす。
-        [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-         [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed), 0, ObjectManager.moveToObjectToX]],
-      ];  
-  }
+        // マップPattern３
+        // ---------------------------------------------
+        // 🧩 パターン3の「動かし方」
+        // ※これも今はパターン1と同じ
+        // だから「currentPatternが変わっても挙動が同じ」に見える可能性がある
+        // ---------------------------------------------
+        this.item_and_disturver_animation_film_3dlist_3 = [
+            // 邪魔者の座標を動かす。
+            [[world.objects["建物_3"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+            //  [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            [world.objects["UFO_3"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+          ];
+      }
 
   @override
   void mainScript() 
   {
     // 🐾 デバッグ用ログ：このPlayerが毎フレーム呼ばれてるか確認できる
-    debugPrint("▶ ${runtimeType} mainScript スタート");
+    // debugPrint("▶ ${runtimeType} mainScript スタート");
 
     // ⏱ 今の時刻（ミリ秒→秒にしてる）
     final nowSec =
@@ -3019,6 +3257,7 @@ class MovingDisturverPlayer extends SuperPlayer {
 
       // 🧼 これ超重要：コマ番号を0に戻す（じゃないと途中から再生する）
       currentIndex = 0;   // ★これがないと前のindexのまま進みます
+
     }
 
     // ==========================================
@@ -3073,12 +3312,13 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   // 🔵 クラス変数
   // ==============================
   bool flag_jumping_now = false; // ジャンプ中ならばtrueにする。
-  bool now_fly = false;
   int continuous_jump_count = 0;   // 現在のジャンプ回数
   int continuous_jump_max_num = 1;       // 連続ジャンプ可能数（羽とったらこれを２にすればよし。）
   final Offset hiddenOffset = const Offset(-10000, -10000); // 隠す場所
   final Offset anoanoBiasOffset = const Offset(200, 500); // アノアノのバイアス座標
   late List<WorldObject> touchableObjects;
+  double jump_power = 220;
+  bool _prevTouching = false; // 🆕 前フレームのタッチ状態
 
 
   // ==============================
@@ -3111,15 +3351,15 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     // アノアノジャンプ
     this.jump_animation_film_3dlist = [
-        [[world.objects["アノアノ輪郭"], (-150, 100, 50, 0.5, 1, false), 0, ObjectManager.toJump]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, jump_power, 0.5, 1, false), 0, ObjectManager.toJump]],
       ];
 
     // アノアノジャンプ(重複ジャンプ用)
     this.more_jump_animation_film_3dlist = [
-        [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, true), 0, ObjectManager.toJump]],
+        [[world.objects["アノアノ輪郭"], (-150, 100, jump_power, 0.5, 1, true), 0, ObjectManager.toJump]],
       ];
 
-    debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
+    // debugPrint("GameJumpAnimationPlayerの初期化が完了しました。");
   }
 
   void jump_flag_to_false(){
@@ -3137,38 +3377,61 @@ class GameJumpAnimationPlayer extends SuperPlayer {
     // ======================================================
     // 画面がタッチされたとき
     // ======================================================
-    if (world.receiveInputPlayer.isTouching) {
+    final isTouching = world.receiveInputPlayer.isTouching || SystemEnvService.isTouching;
+    final justPressed = isTouching && !_prevTouching; // 🆕 押した瞬間だけtrue
+    _prevTouching = isTouching; // 🆕 状態を保存
 
+    if (justPressed) { // 🆕 isTouching → justPressed に変更
       // -------------------------------------------------
       // （連続ジャンプ数 < 最大連続ジャンプ数）の時
       // -------------------------------------------------
-      if (this.continuous_jump_count < this.continuous_jump_max_num) {
+      if (this.continuous_jump_count < this.continuous_jump_max_num) 
+      {
         // -------------------------------------------------
         // まだジャンプできるので、ジャンプする。
         // -------------------------------------------------
         
         // -------------------------------------------------
-        // ジャンプする前の準備
+        // 周りに何かに触れているか判定
         // -------------------------------------------------
-        // 周りに何も触れていなければ、n段ジャンプとする。
-        bool isTouchingAnything = false;
-        for (final obj in this.touchableObjects) { // オブジェクトリスト
-          if (ComponentsService.hit(world.objects["アノアノ輪郭"]!, obj)) {
-            isTouchingAnything = true;
+        final anoano = world.objects["アノアノ輪郭"]!;
+        WorldObject? touchingObj;
+        for (final obj in this.touchableObjects) {
+          if (ComponentsService.hit(anoano, obj)) {
+            touchingObj = obj;
             break;
           }
         }
-        if (!isTouchingAnything) {
-          // 連続ジャンプ数をインクリメント
-          this.continuous_jump_count += 1;
+
+        // -------------------------------------------------
+        // 基準オブジェクトが存在し、かつ触れている場合のみ頂点Yにスナップ
+        // （空中ジャンプ時は、二段ジャンプとするためスナップしない。
+        // 　→　つまり、着地したら常に着地相手とこらーだーを
+        // 　　　重ねて着地させてください。）
+        // -------------------------------------------------
+        if (touchingObj != null && touchingObj.colliderRect != null) {
+          final objName = ComponentsService.getObjectName(touchingObj);
+          final bias = world.adjustFlagPlayer.grand_bias_dict[objName] ?? 4.0;
+          ObjectManager.snapOnTopOfYOnly(anoano, (touchingObj, bias));
         }
-        else{
-          // n段ジャンプ(n == 1)なので、１を代入する。
+
+        // -------------------------------------------------
+        // ジャンプする前の準備
+        // -------------------------------------------------
+        // touchingObj を使い回して、n段ジャンプ数を管理する。
+        if (touchingObj == null) {
+          // 空中 → 連続ジャンプ数をインクリメント
+          this.continuous_jump_count += 1;
+        } else {
+          // 地上から → 1段目にリセット
           this.continuous_jump_count = 1;
         }
-        
+
         // フラグ「現在ジャンプしています」をtrue
-        this.now_fly = true;
+        this.flag_jumping_now = true;
+
+        // フラグ「着地しています」をfalse
+        world.adjustFlagPlayer.ground_now = false;
 
 
         // -------------------------------------------------
@@ -3186,6 +3449,42 @@ class GameJumpAnimationPlayer extends SuperPlayer {
           (-150, 100, 300, 0.5, this.continuous_jump_max_num, true),
         );
       }
+
+      // ジャンプできる条件がそろってなかった。
+      else
+      {
+        // runningリストを閲覧し、アノアノのジャンプ情報を取得。
+        // （アノアノが、この関数で動いているタスクが一つでもあればTrueが返ってくる。）
+        final isJumping = ObjectManager.hasRunningTaskOfObjAndFuncs(
+          world.objects["アノアノ輪郭"]!,
+          ([ObjectManager.toJump, ObjectManager.toJump_to_ground, ObjectManager.toJumpToObject]),
+        );
+
+        // もしrunningリスト内より、ジャンプ登録が存在しなければ、
+        if (!isJumping){
+          // フラグを!ジャンプとする。
+          this.flag_jumping_now = false;
+        }
+      }
+    }
+
+    // ======================================================
+    // 画面がタッチされていない場合
+    // ======================================================
+    else
+    {
+      // runningリストを閲覧し、アノアノのジャンプ情報を取得。
+      // （アノアノが、この関数で動いているタスクが一つでもあればTrueが返ってくる。）
+      final isJumping = ObjectManager.hasRunningTaskOfObjAndFuncs(
+        world.objects["アノアノ輪郭"]!,
+        ([ObjectManager.toJump, ObjectManager.toJump_to_ground, ObjectManager.toJumpToObject]),
+      );
+
+      // もしrunningリスト内より、ジャンプ登録が存在しなければ、
+      if (!isJumping){
+        // フラグを!ジャンプとする。
+        this.flag_jumping_now = false;
+      }
     }
   }
 }
@@ -3196,16 +3495,26 @@ class GameJumpAnimationPlayer extends SuperPlayer {
 // ========================================================
 class GameFallAnimationPlayer extends SuperPlayer {
 
+  // ====================================
+  // 設定値
+  // ====================================
   // 落下速度
-  double fallSpeed = 40;
+  double fallSpeed = 30;
 
   // ====================================
   // フラグ
   // ====================================
   bool fall_now = false; // 落下中でtrue
+  Offset? frameStartPosition; // mainScript先頭のアノアノ座標
+  Offset? frameEndPosition;   // mainScript末尾のアノアノ座標
 
   @override
-  void init() {}
+  void init() 
+  {
+    // mainScript先頭座標、末尾座標の記録をリセット。
+    frameStartPosition = null;
+    frameEndPosition = null;
+  }
 
   void fall_flag_to_false(){
     this.fall_now = false;
@@ -3214,19 +3523,63 @@ class GameFallAnimationPlayer extends SuperPlayer {
   @override
   void mainScript() {
 
-    // ジャンプ中ではない なら落下
-    if (!world.gameJumpAnimationPlayer.flag_jumping_now)
+    // ====================================================
+    // ✅ フレーム先頭の座標を記録
+    // ====================================================
+    final anoano = world.objects["アノアノ輪郭"];
+    if (anoano != null) {
+      frameStartPosition = anoano.position;
+    }
+
+    // ====================================================
+    // 先に、アノアノが何かに触れているか否かのbool判定。
+    // ====================================================
+    bool touchingNothing = true;
+    for (final obj in world.gameJumpAnimationPlayer.touchableObjects) {
+      if (ComponentsService.hit(world.objects["アノアノ輪郭"]!, obj)) {
+        touchingNothing = false;
+        break;
+      }
+    }
+
+    // ====================================================
+    // ジャンプ中ではない、
+    // かつ、アノアノが何も触れていない 
+    // なら落下
+    // ====================================================
+    // debugPrint("🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙");
+    // debugPrint("${world.gameJumpAnimationPlayer.flag_jumping_now}");
+    // debugPrint("${touchingNothing}");
+    // debugPrint("🌙🌙🌙🌙🌙🌙🌙🌙🌙🌙");
+    if (!world.gameJumpAnimationPlayer.flag_jumping_now &&
+       touchingNothing 
+    )
     { 
+      // debugPrint("🌙落下ifに入りました。");
+
+      // ====================================================
+      // フラグ操作
+      // ====================================================
       // 「ジャンプ中フラグ」をfalseにする。
       world.gameJumpAnimationPlayer.jump_flag_to_false();
 
       // 「落下中フラグ」をtrueにする。
       this.fall_now = true;
 
+      // ====================================================
+      // 落下処理
+      // ====================================================
       // toFallメソッドで落下させる。
       // ✅ runningTasksに登録せず、直接呼び出すだけ
       ObjectManager.toFall(world.objects["アノアノ輪郭"]!, (fallSpeed, []));
       // ↑ groundListはadjustFlagPlayerに任せるのでここでは不要
+    }
+
+    // ====================================================
+    // ✅ フレーム末尾の座標を記録
+    // ====================================================
+    if (anoano != null) {
+      frameEndPosition = anoano.position;
     }
   }
 }
@@ -3248,6 +3601,12 @@ class CollisionGimmickPlayer extends SuperPlayer {
   late List<(WorldObject, HitSide)> hitList;
 
   // -----------------------------------------------
+  // 🪶 itemHitDict（アイテムぶつかった辞書）
+  // 例）{"アイテム_羽_1": true} みたいな感じ。
+  // -----------------------------------------------
+  Map<String, bool> itemHitDict = {}; // 🆕 late をやめて初期値を入れる
+
+  // -----------------------------------------------
   // 🌱 init（さいしょに1回だけやる準備）
   // -----------------------------------------------
   @override
@@ -3262,31 +3621,186 @@ class CollisionGimmickPlayer extends SuperPlayer {
   @override
   void mainScript() {
 
+    // ===============================================
     // ぶつかったリストを空にする。
+    // ===============================================
     hitList.clear();
 
+    // ===============================================
     // このオブジェクトたちに、ぶつかったかどうかを見る。
+    // ===============================================
     final objects = world.gameJumpAnimationPlayer.touchableObjects;
 
+    // ===============================================
     // アノアノ。
+    // ===============================================
     final player = world.objects["アノアノ輪郭"];
-    if (player == null) return;
+        if (player == null) return;
 
+        // ==============================
+        // 🪶 アイテム衝突判定（辞書に記録するだけ）
+        // ==============================
+        itemHitDict.clear();
+        final itemTargets = ["アイテム_羽_1"];
+        for (final itemName in itemTargets) {
+          final item = world.objects[itemName];
+          if (item == null) continue;
+          if (item.position.dx > 9000) continue; // 🆕 画面外退避済みならスキップ
+          final itemHit = ComponentsService.hitSide(player, item);
+          if (itemHit != HitSide.none) {
+            itemHitDict[itemName] = true;
+          }
+        }
+
+    // ===============================================
     // オブジェクトリストをforで回す。
+    // ===============================================
     for (final obj in objects) {
 
+      // ===============================================
       // このオブジェクトが、アノアノにぶつかったかを判定する。
+      // ===============================================
       final side = ComponentsService.hitSide(player, obj!);
 
+      // ===============================================
       // ぶつかっていなければpass
-      if (side == HitSide.none){
+      // ===============================================
+      if (side == HitSide.none)
+      {
       }
 
+      // ===============================================
       // ぶつかっていれば、「ぶつかったリスト」に登録
-      else{
+      // ===============================================
+      else
+      {
         hitList.add((obj, side));
       }
     }
+
+    // ==============================
+    // 【特別判定枠】
+    // Fall前座標　と　Fall後座標
+    // の間に
+    // オブジェクトが存在した場合、
+    // そのオブジェクトの上に乗っかる。
+    // なおこの時、「Fall前 > Fall後」
+    // の時は、北衝突判定とする。
+    // （スピードが60pixelの時、60pixel
+    // 以下のオブジェクトをFallで貫通し
+    // てしまい、コライダー判定がスルー
+    // されてしまったため。実装（2026年
+    // 3月1日））
+    // ==============================
+
+    // -----------------------------------------------
+    // 🧭 ① このフレームの「はじめの場所」と「おわりの場所」をもらう
+    // -----------------------------------------------
+    // frameStartPosition : このフレームが始まった時の位置
+    // frameEndPosition   : このフレームが終わった時の位置
+    final startPos = world.gameFallAnimationPlayer.frameStartPosition;
+    final endPos   = world.gameFallAnimationPlayer.frameEndPosition;
+
+    // -----------------------------------------------
+    // 🧩 ② どっちも取れてる時だけ、特別判定をやるよ
+    // -----------------------------------------------
+    // （どっちかがnullだと、位置がわからないから何もできない）
+    if (startPos != null && endPos != null) {
+
+
+
+      // -----------------------------------------------
+      // 🧺 ③ ぶつかる可能性のあるオブジェクトをぜんぶ見ていく
+      // -----------------------------------------------
+      for (final obj in objects) {
+
+        // -----------------------------------------------
+        // 🛑 まずは安全チェック！
+        // -----------------------------------------------
+        // objが空っぽなら見ない（なにもないから）
+        if (obj == null) continue;
+
+        // -----------------------------------------------
+        // 🧾 ④ すでに通常判定で「当たった」ってメモしてたらスキップ
+        // -----------------------------------------------
+        // 同じ相手を二重に登録したくないからね！
+        final alreadyHit = hitList.any((h) => identical(h.$1, obj));
+        if (alreadyHit) continue;
+
+        // -----------------------------------------------
+        // 🧱 ⑤ 相手の“上判定部分”と“下判定部分”のラインを用意
+        // -----------------------------------------------
+        final groundTop    = obj.colliderRect!.top;
+        final groundBottom = obj.colliderRect!.bottom;
+
+        // ----------------------------------------------------
+        // 🧱 【相手と自分が縦方向に並んでいなければ、スキップ！】
+        // 🧱 ⑤.5 X範囲チェック：横がかぶってなければスキップ
+        // ----------------------------------------------------
+        // Y方向だけ見ても、横にズレてたら当たらないからね！
+        final playerHalfW = player.colliderRect!.width / 2;
+        final playerLeft  = endPos.dx - playerHalfW;
+        final playerRight = endPos.dx + playerHalfW;
+        final groundLeft  = obj.colliderRect!.left;
+        final groundRight = obj.colliderRect!.right;
+
+        if (playerRight <= groundLeft || playerLeft >= groundRight) continue;
+
+        // -----------------------------------------------
+        // 🧍 ⑥ プレイヤーの大きさから “上端/下端” を計算するよ
+        // -----------------------------------------------
+        // プレイヤーの中心座標(startPos.dy/endPos.dy)だけだと
+        // 実際の当たり判定の上下がわからないから、
+        // 高さの半分(playerHalfH)を足したり引いたりして
+        // 「頭の位置」「足の位置」を作るんだ！
+        final playerHalfH  = player.colliderRect!.height / 2;
+
+        // 足（下側）の位置：中心 + 半分の高さ
+        final startBottom  = startPos.dy + playerHalfH;
+        final endBottom    = endPos.dy   + playerHalfH;
+
+        // 頭（上側）の位置：中心 - 半分の高さ
+        final startTop     = startPos.dy - playerHalfH;
+        final endTop       = endPos.dy   - playerHalfH;
+
+        // ==================================================
+        // ✅ ⑦【南（した）判定】落ちて床の“上面”をまたいだら当たり！
+        // --------------------------------------------------
+        // 条件：
+        // 1) endPos.dy > startPos.dy  → 下に動いてる（落ちてる）
+        // 2) startBottom <= groundTop → 最初は床より上（足が上）
+        // 3) endBottom   >= groundTop → 最後は床より下（足が下）
+        //
+        // この3つがそろうと、
+        // 「1フレームの間に床の上面を通り抜けた」ってこと！
+        // ==================================================
+        if (endPos.dy > startPos.dy &&
+            startBottom <= groundTop &&
+            endBottom   >= groundTop) {
+          // debugPrint("🚨 レイキャスト南判定: ${ComponentsService.getObjectName(obj)}");
+          hitList.add((obj, HitSide.south));
+        }
+
+        // ==================================================
+        // ✅ ⑧【北（うえ）判定】上に動いて床の“下面”をまたいだら当たり！
+        // --------------------------------------------------
+        // 条件：
+        // 1) endPos.dy < startPos.dy  → 上に動いてる（ジャンプ等）
+        // 2) startTop >= groundBottom → 最初は床より下（頭が下）
+        // 3) endTop   <= groundBottom → 最後は床より上（頭が上）
+        //
+        // これで、
+        // 「床の下面を突き抜けた」みたいなケースも拾えるよ！
+        // ==================================================
+        else if (endPos.dy < startPos.dy &&
+                startTop >= groundBottom &&
+                endTop   <= groundBottom) {
+          // debugPrint("🚨 レイキャスト北判定: ${ComponentsService.getObjectName(obj)}");
+          hitList.add((obj, HitSide.north));
+        }
+      }
+    }
+
   }
 }
 
@@ -3306,6 +3820,13 @@ class AdjustFlagPlayer extends SuperPlayer {
   // フラグ
   // ==========================================================
   bool game_over = false;
+  late bool ground_now;
+
+  // ==========================================================
+  // 設定値
+  // ==========================================================
+  late Map<String, double> grand_bias_dict; // オブジェクトの上に乗っかるときの、
+                       //オブジェクトごとのY軸バイアス
 
   // ==========================================================
   // フィルム再生用キャッシュ
@@ -3329,6 +3850,26 @@ class AdjustFlagPlayer extends SuperPlayer {
         // runningリストから削除することで、ストップ。
         [[world.objects["アノアノ輪郭"]!, (ObjectManager.toJump,), 0, ObjectManager.removeRunningTask]],
       ];
+
+    // ============================================
+    // 設定
+    // 
+    // 【！！注意！！】
+    // ちょっと重ねてください。
+    // （→ 落下トリガーが「ほかのobjに触れていなければ落下」を条件に含むためです）
+    // ============================================
+    // ぶつかったときのY補正の、オブジェクトごとのYバイアス辞書
+    this.grand_bias_dict = 
+    { 
+      "地面": 4, // 大きくすると、上がる。
+      "建物_1": 4,
+      "建物_2": 4,
+      "建物_3": 4,
+      "UFO_1": 4,
+      "UFO_2": 4,
+      "UFO_3": 4,
+    };
+    
   }
 
   @override
@@ -3337,6 +3878,33 @@ class AdjustFlagPlayer extends SuperPlayer {
     // ① 主役
     final anoano_obj = world.objects["アノアノ輪郭"];
     if (anoano_obj == null) return;
+
+    // ==============================
+    // 🪶 アイテム衝突の処理
+    // ==============================
+    final itemHitDict = world.collisionGimmickPlayer.itemHitDict;
+
+    if (itemHitDict["アイテム_羽_1"] == true) {
+      // debugPrint("🪶 羽アイテムを取得！");
+
+      // 連続ジャンプ可能数を+1
+      world.gameJumpAnimationPlayer.continuous_jump_max_num += 1;
+
+      // 羽を画面外に退避（消す）
+      final hane = world.objects["アイテム_羽_1"];
+      if (hane != null) {
+        ObjectManager.toSetPosition(hane, (10000.0, 10000.0));
+      }
+
+      // 羽のtoMoveメソッドをrunningリストから削除する。
+      ObjectManager.removeRunningTask(
+        world.objects["アイテム_羽_1"]!, 
+        (ObjectManager.toMove,),
+      );
+
+      // 小さい羽を作成し、アノアノの後ろに生やしてあげる。
+
+    }
 
     // ② ぶつかったオブジェクトリスト
     final hitList = world.collisionGimmickPlayer.hitList;
@@ -3348,13 +3916,13 @@ class AdjustFlagPlayer extends SuperPlayer {
       final name = ComponentsService.getObjectName(obj);
       return '$name side=${side.name} pos=(${obj.position.dx.toStringAsFixed(1)}, ${obj.position.dy.toStringAsFixed(1)})';
     }).join(' | ');
-    debugPrint('HIT = $s');
+    // debugPrint('HIT = $s');
 
     // 今回、オブジェクトに触れていた。(hitListが空じゃなかった)
     if (!world.collisionGimmickPlayer.hitList.isEmpty)
     {
       final c = world.collisionGimmickPlayer.hitList;
-      debugPrint("hitList:$c");
+      // debugPrint("hitList:$c");
 
       // すべての触れたオブジェクトを見る（奇跡が起きない限り１ぺとなるのが基本だが。）
       for (final (touched_obj, side) in world.collisionGimmickPlayer.hitList) 
@@ -3362,7 +3930,7 @@ class AdjustFlagPlayer extends SuperPlayer {
         // 北（アノアノの頭）に触れていた時
         if (side == HitSide.north)
         {
-          debugPrint("$sが北（アノアノの頭）に触れていた");
+          // debugPrint("$sが北（アノアノの頭）に触れていた");
           this.game_over = true;
         }
 
@@ -3370,12 +3938,14 @@ class AdjustFlagPlayer extends SuperPlayer {
         else if (side == HitSide.south ||
                   side == HitSide.inside)
         {
-          debugPrint("$sが南（アノアノの足）に触れていた");
-          // このフレームで、画面のタッチがなく、落下中であった場合
+          // debugPrint("$sが南（アノアノの足）に触れていた");
+
           final a = world.receiveInputPlayer.isTouching;
           final b = world.gameFallAnimationPlayer.fall_now;
-          debugPrint("タッチされた:$a");
-          debugPrint("落下中:$b");
+          // debugPrint("タッチされた:$a");
+          // debugPrint("落下中:$b");
+
+          // このフレームで、画面のタッチがなく、落下中であった場合
           if (
               !world.receiveInputPlayer.isTouching && // タッチなかった
               world.gameFallAnimationPlayer.fall_now // 落下中だった
@@ -3384,15 +3954,32 @@ class AdjustFlagPlayer extends SuperPlayer {
             // ================================================================
             // ジャンプを停止する。
             // ================================================================
-            // そのオブジェクトの上に着地する。（Yのみobjectの上で固定。）
-            debugPrint("$sのオブジェクトの上に着地する");
-            ObjectManager.snapOnTopOfYOnly(anoano_obj, (
-                                                          touched_obj, // ぶつかった相手
-                                                          0, // 0超過にすれば、その分相手より上に上に位置できる。
-                                                        )
-                                          );
+            // そのオブジェクトの上に着地する。
+            // （Yのみobjectの上で固定。各オブジェクトごとで、
+            // Y軸バイアスを割り当てる。）
+            // 
+            // 【！！注意！！】
+            // ちょっと重ねてください。
+            // （→ 落下トリガーが「ほかのobjに触れていなければ落下」を条件に含むためです）
+            // debugPrint("$sのオブジェクトの上に着地する");
+            final touch_obj_name = ComponentsService.getObjectName(touched_obj);
+            ObjectManager.snapOnTopOfYOnly(
+                              anoano_obj, 
+                              (
+                                touched_obj, // ぶつかった相手
+                                world.adjustFlagPlayer.grand_bias_dict[touch_obj_name]!, // 0超過にすれば、
+                                                                                         // その分相手より上に
+                                                                                         // 位置できる。
+                              )
+              );
             // 「落下中フラグをfalse」にする。
             world.gameFallAnimationPlayer.fall_flag_to_false();
+
+            // 「着地中フラグをON」にする。
+            world.adjustFlagPlayer.ground_now = true;
+
+            // 「ジャンプ中フラグをOFF」にする。
+            world.gameJumpAnimationPlayer.flag_jumping_now = false;
 
             // 「連続ジャンプカウントをfalse」にする。
             world.gameJumpAnimationPlayer.continuous_jump_count_to_reset();
@@ -3404,7 +3991,7 @@ class AdjustFlagPlayer extends SuperPlayer {
           // 地面に接しているが画面がタップされていた
           else 
           {
-            debugPrint("ぶつかっているが、画面がタップされていたので、何もしない。");
+            // debugPrint("ぶつかっているが、画面がタップされていたので、何もしない。");
             // 何もしない（jumpメソッドを確実に実行させるため）
           }
 
@@ -3414,13 +4001,13 @@ class AdjustFlagPlayer extends SuperPlayer {
 
         // 西（アノアノの左）に触れていた時
         else if (side == HitSide.west){
-          debugPrint("$sが西（アノアノの左）に触れていた");
+          // debugPrint("$sが西（アノアノの左）に触れていた");
           // ゲームオーバーにしない。
           this.game_over = false; // passでOKだが、誤認を防ぐ為、強制的に「非game_over」とする。
         }
         // 東（アノアノの右）に触れていた時
         else if (side == HitSide.east){
-          debugPrint("$sが東（アノアノの右）に触れていた");
+          // debugPrint("$sが東（アノアノの右）に触れていた");
           this.game_over = true;
         }
       }
@@ -3436,6 +4023,178 @@ class AdjustFlagPlayer extends SuperPlayer {
     world.receiveInputPlayer.game_frame_count += 1;
   }
 
+}
+
+
+// ==============================================================
+// 🏆 PointPlayer（点数管理係）
+// --------------------------------------------------------------
+// ・障害物（建物・UFO）がアノアノより左に出たら＋１点
+// ・同じ障害物で二重カウントしないよう、
+// 　「一度通過したらメモしておく」設計にする。
+// ==============================================================
+class PointPlayer extends SuperPlayer {
+
+  int point = 0;
+  final Set<WorldObject> _passedObjects = {};
+  final List<ImageObject> digitObjs = [];
+  String digitAsset(int d) => "assets/images/$d.png";
+
+  late List<WorldObject> pointObjects;
+
+  @override
+  void init() {
+    point = 0;
+    _passedObjects.clear();
+
+    this.pointObjects = [
+        world.objects["建物_1"],
+        world.objects["建物_2"],
+        world.objects["建物_3"],
+        world.objects["UFO_1"],
+        world.objects["UFO_2"],
+        world.objects["UFO_3"],
+      ].whereType<WorldObject>().toList();
+
+    for (final o in digitObjs) {
+      ObjectManager.toRemoveSelf(o, (true,));
+    }
+    digitObjs.clear();
+  }
+
+  @override
+  void mainScript() {
+
+    final anoano = world.objects["アノアノ輪郭"];
+    if (anoano == null) return;
+
+    final double anoanoX = anoano.position.dx;
+
+    // ======================================================
+    // 障害物リストをすべて見ていく
+    // ======================================================
+    for (final obj in this.pointObjects) {
+
+      // -------------------------------------------------
+      // 画面外（hidden）にいる間はスキップ
+      // （初期化直後に全部カウントされるのを防ぐ。）
+      // -------------------------------------------------
+      if (obj.position.dx < -1000) continue;
+
+      if (_passedObjects.contains(obj)) {
+        if (obj.position.dx > anoanoX) {
+          _passedObjects.remove(obj);
+        }
+        continue;
+      }
+
+      if (obj.position.dx < anoanoX) {
+        point += 1;
+        _passedObjects.add(obj);
+        // debugPrint("🏆 通過！ ${ComponentsService.getObjectName(obj)} → point = $point");
+      }
+    }
+
+    // ======================================================
+    // ポイントを表示する
+    // ======================================================
+    final screen = SystemEnvService.screenSize;
+    if (screen != Size.zero) {
+
+      // -------------------------------------------------
+      // 数字オブジェクトが足りなければ追加生成
+      // （pointが増えて桁が増えた時に対応。）
+      // -------------------------------------------------
+      final digits = point.toString().split('').map((c) => int.tryParse(c) ?? 0).toList();
+      final showCount = digits.length;
+
+      while (digitObjs.length < showCount) {
+        final name = "スコア数字_${digitObjs.length}";
+        ObjectCreator.createImage(
+          objectName: name,
+          assetPath: digitAsset(0),
+          position: const Offset(-10000, -10000),
+          width: 140,
+          height: 140,
+          layer: 900000,
+          enableCollision: false,
+        );
+        final obj = world.objects[name];
+        if (obj is ImageObject) {
+          digitObjs.add(obj);
+        }
+      }
+
+      // -------------------------------------------------
+      // 各桁の画像を差し替え
+      // -------------------------------------------------
+      for (int i = 0; i < showCount; i++) {
+        digitObjs[i].assetPath = digitAsset(digits[i]);
+      }
+
+      // -------------------------------------------------
+      // ポイントを上に表示する
+      // ① 並べる間隔（横方向）
+      // -------------------------------------------------
+      // gapX を大きくすると数字同士が離れる。
+      // 小さくすると詰まる。
+      // 画像幅が40〜60くらいなら、60は見やすい設定。
+      final double gapX = 25.0;
+
+      // -------------------------------------------------
+      // ② 並べる全体の横幅を計算
+      // -------------------------------------------------
+      // showCount 個の数字を gapX 間隔で並べる時、
+      // 間隔は (showCount - 1) 個ある。
+      // 例：3桁なら「□-□-□」なので間隔は2つ。
+      final double totalWidth = gapX * (showCount - 1);
+
+      // -------------------------------------------------
+      // ③ 中央寄せのための startX を作る
+      // -------------------------------------------------
+      // 中央寄せにしたいので、全体幅の半分だけ左にずらした位置を
+      // 先頭のXにする。
+      // 例：totalWidth=120 なら startX=-60 から始めると
+      //     -60, 0, +60 に並んで “中央揃え” になる。
+      final double startX = -totalWidth / 2;
+
+      // -------------------------------------------------
+      // ④ 表示するY位置（上寄せ）
+      // -------------------------------------------------
+      // 画面中心基準なので…
+      //
+      // ・screen.height / 4  → 画面の中央より “下”
+      // ・-screen.height / 4 → 画面の中央より “上”
+      //
+      // 「上に表示したい」ならマイナスにする。
+      // だいたい “上から25%付近” ならこれがちょうどいい。
+      final double startY = -screen.height / 4;
+
+      // ★もしもっと上（ほぼ上端）にしたいなら例：
+      // final double startY = -screen.height / 2 + 80;
+      // （80は上端からの余白。好みで調整）
+
+      // -------------------------------------------------
+      // ⑤ 実際に並べる（表示する桁だけ）
+      // -------------------------------------------------
+      // digitObjs の先頭から showCount 個だけ取り出して配置する。
+      // sublist(0, showCount) にすることで、必要な桁だけ動かす。
+      ObjectManager.toArrangeEvenly(
+        digitObjs.sublist(0, showCount),
+        (startX, startY, gapX, 0),
+      );
+
+      // -------------------------------------------------
+      // ⑥ 使っていない桁は “画面外” に退避
+      // -------------------------------------------------
+      // showCount より後ろの桁（余った桁）は表示したくないので、
+      // 見えない場所（-10000, -10000）へ飛ばして隠す。
+      // これをやらないと、前回の配置が残って表示され続けることがある。
+      for (int i = showCount; i < digitObjs.length; i++) {
+        digitObjs[i].position = const Offset(-10000, -10000);
+      }
+    }
+  }
 }
 
 
@@ -3461,14 +4220,18 @@ class GameoverJudgmentPlayer extends SuperPlayer {
   void mainScript() {
     if (world.adjustFlagPlayer.game_over)
     {
+      // ゲームオーバーflagをONにする。
       flag_gameover = true;
+
+      // runningリストをすべて削除。
+      ObjectManager.clearAllRunningTasks();
     }
   }
 }
 
 
 class GameOverDisplayPlayer extends SuperPlayer {
-  double hidden_xy = -10000.0;
+  double hidden_xy = 10000.0;
   Size screenSize = SystemEnvService.screenSize;
   late Offset center_down;
 
@@ -3546,7 +4309,7 @@ class GameOverInputPlayer extends SuperPlayer {
 
   bool flag_one_more_start_button = false;
 
-  final Offset hidden_xy = const Offset(-10000, -10000);
+  final Offset hidden_xy = const Offset(10000, 10000);
 
   @override
   void init() {
@@ -3571,37 +4334,34 @@ class GameOverInputPlayer extends SuperPlayer {
     // ============================================================
     if (ComponentsService.isClicked(mouikkai_button)) {
       final name = ComponentsService.getObjectName(mouikkai_button);
-      debugPrint("$name が押されました。");
+      // debugPrint("$name が押されました。");
 
       flag_one_more_start_button = true;
 
       // ==============================
-      // 👻 ゲームモードの
+      // 障害物をすべてハイド。
       // ==============================
 
-      ObjectManager.toSetPosition(
-        mouikkai_button,
-        (hidden_xy.dx, hidden_xy.dy),
-      );
+      // ボタン・表情を隠す
+      ObjectManager.toSetPosition(mouikkai_button, (hidden_xy.dx, hidden_xy.dy));
+      ObjectManager.toSetPosition(sadRightEye, (hidden_xy.dx, hidden_xy.dy));
+      ObjectManager.toSetPosition(sadLeftEye, (hidden_xy.dx, hidden_xy.dy));
+      ObjectManager.toSetPosition(sadMouth, (hidden_xy.dx, hidden_xy.dy));
 
-      ObjectManager.toSetPosition(
-        sadRightEye,
-        (hidden_xy.dx, hidden_xy.dy),
-      );
-
-      ObjectManager.toSetPosition(
-        sadLeftEye,
-        (hidden_xy.dx, hidden_xy.dy),
-      );
-
-      ObjectManager.toSetPosition(
-        sadMouth,
-        (hidden_xy.dx, hidden_xy.dy),
-      );
-    }
-    
-  }
-}
+      // ⭐ 障害物を隠す
+      final hideTargets = [
+        "建物_1", "建物_2", "建物_3",
+        "UFO_1", "UFO_2", "UFO_3",
+      ];
+      for (final name in hideTargets) {
+        final obj = world.objects[name];
+        if (obj != null) {
+          ObjectManager.toSetPosition(obj, (hidden_xy.dx, hidden_xy.dy));
+        }
+      }
+    }  // ← isClicked の閉じ
+  }    // ← mainScript の閉じ
+}      // ← クラスの閉じ
 
 
 // ==============================================================
@@ -3628,7 +4388,7 @@ class ScheduleMaking {
       for (final player in players) {
 
         // --- 水色ログ ---
-        debugPrint('\x1B[36m[INIT] ${player.runtimeType}\x1B[0m');
+        // debugPrint('\x1B[36m[INIT] ${player.runtimeType}\x1B[0m');
 
         player.init();
       }
@@ -3641,7 +4401,7 @@ class ScheduleMaking {
     for (final player in players) {
 
       // --- 青ログ ---
-      debugPrint('\x1B[34m[MAIN] ${player.runtimeType}\x1B[0m');
+      // debugPrint('\x1B[34m[MAIN] ${player.runtimeType}\x1B[0m');
 
       player.mainScript();
     }
@@ -3738,6 +4498,7 @@ class _MyAppState extends State<MyApp>
         world.gameFallAnimationPlayer, // ユーザの入力に対するジャンプ座標処理
         world.collisionGimmickPlayer, // コライダー判定フラグ
         world.adjustFlagPlayer,  // コライダーflagの処理。（例（着地判定の上書き（建物北に衝突→yを建物北（よりちょっと上）に上書き。）））
+        world.pointPlayer, // 点数管理
         world.gameoverJudgmentPlayer // ゲームオーバー判断
       ],
     );
@@ -3971,7 +4732,7 @@ class _MyAppState extends State<MyApp>
       if (!same_before_schedule_mode) {
         // ★モードが切り替わった瞬間は、次モードの init を必ず走らせる
         next_schedule.reset();
-        debugPrint("\n\x1B[35m==== スケジュールモード【${this.schedule_status}】を開始します ============================\x1B[0m");
+        // debugPrint("\n\x1B[35m==== スケジュールモード【${this.schedule_status}】を開始します ============================\x1B[0m");
       }
       
       // =============================================================
@@ -3980,7 +4741,7 @@ class _MyAppState extends State<MyApp>
       next_schedule.doing(); 
 
       if (!same_before_schedule_mode){
-        debugPrint("\x1B[35m==== スケジュールモード【${this.schedule_status}】を終了します ============================\x1B[0m\n");
+        // debugPrint("\x1B[35m==== スケジュールモード【${this.schedule_status}】を終了します ============================\x1B[0m\n");
       }
     }
     else {
@@ -3988,9 +4749,9 @@ class _MyAppState extends State<MyApp>
       // エラーハンドリング
       // =============================================================
       if (!same_before_schedule_mode){
-        debugPrint("\x1B[35m==== 【 ❣❣モード分岐に誤りがあります❣❣ 】============================\x1B[0m");
-        debugPrint("\x1B[35m====（next_schedule: ${next_schedule}） ============================\x1B[0m");
-        debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
+        // debugPrint("\x1B[35m==== 【 ❣❣モード分岐に誤りがあります❣❣ 】============================\x1B[0m");
+        // debugPrint("\x1B[35m====（next_schedule: ${next_schedule}） ============================\x1B[0m");
+        // debugPrint("\x1B[35m====（this.schedule_status: ${this.schedule_status}） ============================\x1B[0m");
       }
     }
 
@@ -4054,14 +4815,19 @@ class _MyAppState extends State<MyApp>
       backgroundColor: Colors.black,
 
       body: GestureDetector(
+        behavior: HitTestBehavior.opaque, // 🆕 透明部分もタッチ受け取る
         onTapDown: (details) {
           SystemEnvService.setTouching(true);
           SystemEnvService.setTapPosition(details.localPosition);
         },
         onTapUp: (_) => SystemEnvService.setTouching(false),
         onTapCancel: () => SystemEnvService.setTouching(false),
+        onLongPressDown: (details) { // 🆕 長押し開始も即座に拾う
+          SystemEnvService.setTouching(true);
+          SystemEnvService.setTapPosition(details.localPosition);
+        },
+        onLongPressUp: () => SystemEnvService.setTouching(false), // 🆕
 
-        // update()で更新された world.objects を描画する
         child: WorldRenderer.draw(),
       ),
     );
