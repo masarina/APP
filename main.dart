@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/scheduler.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 
 // ジャンプ内部データ保持クラス
@@ -691,7 +692,7 @@ final world = WorldPool();
 class _RunningTask {
   final WorldObject obj;
   final Function func;
-  final dynamic value;
+  dynamic value;
 
   _RunningTask(this.obj, this.func, this.value);
 }
@@ -714,6 +715,15 @@ class ObjectManager {
   // クラス変数群
   // ============================================================
 
+  // 🔊 音パス辞書（オブジェクト名 → 音ファイルパス）
+  static final Map<String, String> soundDict = {
+    "ジャンプ音": "sounds/se_noise_1.mp3",
+    "n段ジャンプ音": "sounds/se_jump_006.wav",
+    "アイテム取得": "sounds/se_itemget_009.wav",
+    "ダメージ音": "sounds/se_shot_003.wav",
+    // 今後はここに追加していくだけ
+  };
+
   // ジャンプ管理用の辞書
   static final Map<WorldObject, _JumpData> _jumpingObjects = {}; // {obj, 着地予定座標}
 
@@ -723,6 +733,74 @@ class ObjectManager {
   // 戻り値が"running"のリストを保持するリスト。（この中にjump等の、‘毎フレーム実行必須‘モノが格納される。）
   static final List<_RunningTask> _runningTasks = [];
 
+
+  // ====================================================
+  // 🐢 速度を上限に近づける関数（カメとウサギ）
+  // 上限に近づくほど加速量が減る
+  // ====================================================
+  static double calcSpeed({ 
+    required double baseSpeed,
+    required double maxSpeed,
+    required int    count,
+    double          ratio = 0.75,
+  }) {
+    return maxSpeed - (maxSpeed - baseSpeed) * pow(ratio, count);
+  }
+
+
+  // ====================================================
+  // 指定関数のRunningTask全件に対して、
+  // タプルのn番目をnewValueで差し替える
+  //
+  // 使用例：
+  // ObjectManager.updateAllRunningTaskParam(
+  //   ObjectManager.moveToObjectToX,
+  //   2,        // speedPerSec は先頭から3番目（0始まり）
+  //   newSpeed,
+  // );
+  // ====================================================
+  static void updateAllRunningTaskParam(
+    Function func,
+    int paramIndex,
+    dynamic newValue,
+  ) {
+    for (final task in _runningTasks) {
+      if (!identical(task.func, func)) continue;
+
+      // タプルをListに変換 → 書き換え → 新タプルで差し替え
+      final asList = _tupleToList(task.value);
+      if (paramIndex >= asList.length) continue;
+      asList[paramIndex] = newValue;
+      task.value = _listToTuple5(asList); // ← タプルに戻す
+    }
+  }
+  // タプル→List変換（moveToObjectToXは5要素）
+  static List<dynamic> _tupleToList(dynamic tuple) {
+    final t = tuple as (dynamic, dynamic, dynamic, dynamic, dynamic);
+    return [t.$1, t.$2, t.$3, t.$4, t.$5];
+  }
+  // List→タプル変換（5要素固定）
+  static (dynamic,dynamic,dynamic,dynamic,dynamic) _listToTuple5(List<dynamic> l) {
+    return (l[0], l[1], l[2], l[3], l[4]);
+  }
+
+
+  // ============================================================
+  // 音を簡単に再生できるメソッド
+  // 例: ObjectManager.playSound("ジャンプ音");
+  // ============================================================
+  static Future<void> playSound(String key) async {
+    final path = soundDict[key];
+    if (path == null) {
+      debugPrint("⚠️ soundDictに[$key]が存在しません");
+      return;
+    }
+    // 毎回新しいAudioPlayerを作って再生（重なりOK）
+    final player = AudioPlayer();
+    await player.play(AssetSource(path));
+    // 再生終了後に自動で破棄
+    player.onPlayerComplete.listen((_) => player.dispose());
+  }
 
   // ============================================================
   // ✅ runningTasks 内に、指定した関数が1つでもあれば false
@@ -1677,6 +1755,9 @@ class ObjectManager {
         if (_jumpingObjects.isEmpty) {
           resetAllJumpData();
         }
+
+        // ← ここで即座にジャンプフラグを折る
+        world.gameJumpAnimationPlayer.jump_flag_to_false();
 
         return "ok";
       }
@@ -3072,6 +3153,48 @@ class GameInitPlayer extends SuperPlayer {
         enableCollision: true,
         layer: 406, // 表示順番
       );
+      // 建物
+      ObjectCreator.createGIF(
+        objectName: "建物_4",
+        assetPaths: [
+            "assets/images/tatemono_1.png",
+            "assets/images/tatemono_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: 180,
+        height: 180,
+        enableCollision: true,
+        layer: 405, // 表示順番
+        // 見た目より大きいコライダー
+        collisionSize: const Size(90, 130),
+        // 少し右に寄せる
+        collisionOffset: const Offset(14, 10),
+      );
+      // UFO
+      ObjectCreator.createGIF(
+        objectName: "UFO_4",
+        assetPaths: [
+            "assets/images/ufo_1.png",
+            "assets/images/ufo_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: this.ufo_3_size,
+        height: this.ufo_3_size,
+        enableCollision: true,
+        layer: 406, // 表示順番
+      );
+      ObjectCreator.createGIF(
+        objectName: "UFO_5",
+        assetPaths: [
+            "assets/images/ufo_1.png",
+            "assets/images/ufo_2.png",
+          ],
+        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
+        width: this.ufo_3_size,
+        height: this.ufo_3_size,
+        enableCollision: true,
+        layer: 406, // 表示順番
+      );
 
       // ============================================
       // アイテムオブジェクトの生成（見えないところに。）
@@ -3170,7 +3293,7 @@ class ReceiveInputPlayer extends SuperPlayer {
     );
     // 障害物出発地点
     ObjectCreator.createImage(
-      objectName: "障害物出発地点_ランダム",
+      objectName: "障害物出発地点_1",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(50, 100),
       width: 50,
@@ -3184,7 +3307,21 @@ class ReceiveInputPlayer extends SuperPlayer {
     );
     // 障害物出発地点
     ObjectCreator.createImage(
-      objectName: "障害物出発地点_ランダム_2",
+      objectName: "障害物出発地点_2",
+      assetPath: "assets/images/tomoyo.png",
+      position: Offset(50, 100),
+      width: 50,
+      height: 50,
+      layer: 600000, // 表示順番
+      enableCollision: true, // ★これ
+      // 見た目より大きいコライダー
+      collisionSize: const Size(50, 50),
+      // 少し上に寄せる
+      collisionOffset: const Offset(0, 0),
+    );
+    // 障害物出発地点
+    ObjectCreator.createImage(
+      objectName: "障害物出発地点_3",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(50, 100),
       width: 50,
@@ -3257,10 +3394,12 @@ class MovingDisturverPlayer extends SuperPlayer {
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_1; // 🧱 patternごとのフィルム（3Dリスト）
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_2; // 🧱 patternごとのフィルム（3Dリスト）
   late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_3; // 🧱 patternごとのフィルム（3Dリスト）
+  late List<List<List<dynamic>>> item_and_disturver_animation_film_3dlist_4; // 🧱 patternごとのフィルム（3Dリスト）
   late List<List<List<dynamic>>> ufo_start_ramdom_put; // 🧱 patternごとのフィルム（3Dリスト）
   bool item_and_disturver_animation_film_3dlist_1_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool item_and_disturver_animation_film_3dlist_2_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool item_and_disturver_animation_film_3dlist_3_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
+  bool item_and_disturver_animation_film_3dlist_4_end = false; // ✅ それぞれのフィルムが終わったか（今は未使用のフラグ）
   bool flag_all_film_finished = false; // ✅ 全部終わったか（今は使ってないけど、将来の拡張用）
 
 
@@ -3279,32 +3418,51 @@ class MovingDisturverPlayer extends SuperPlayer {
       screenSize.height / 2,
     );
 
-
     // ufo出発地点
     // ---------------------------------------------
-    // 出発地点を決定させる。🌙
+    // 出発地点を決定させる。
     // ---------------------------------------------
     this.ufo_start_ramdom_put = [
-      [[world.objects["障害物出発地点_ランダム"],
-        (200, 0, 800, 50, null, 0,
+      [
+        [world.objects["障害物出発地点"],
+        (300, 100, 400, 100, null, 0, // この出発地点だけYは固定してください。
           <WorldObject>[
-            world.objects["障害物出発地点"]!,
-            world.objects["障害物出発地点_ランダム_2"]!,
+            world.objects["障害物出発地点_1"]!,
+            world.objects["障害物出発地点_2"]!,
+            world.objects["障害物出発地点_3"]!,
           ]
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
-      [world.objects["障害物出発地点_ランダム_2"],
-        (200, 0, 800, 50, null, 0,
+        [world.objects["障害物出発地点_1"],
+        (300, 100, 450, 100, null, 0, // この出発地点だけYは固定してください。
           <WorldObject>[
             world.objects["障害物出発地点"]!,
-            world.objects["障害物出発地点_ランダム"]!,
+            world.objects["障害物出発地点_2"]!,
+            world.objects["障害物出発地点_3"]!,
+          ]
+        ), 0, ObjectManager.toRandomizePositionByCorners],
+
+        [world.objects["障害物出発地点_2"],
+        (230, -60, 650, 50, null, 0,
+          <WorldObject>[
+            world.objects["障害物出発地点"]!,
+            world.objects["障害物出発地点_1"]!,
+            world.objects["障害物出発地点_3"]!,
+          ]
+        ), 0, ObjectManager.toRandomizePositionByCorners],
+
+        [world.objects["障害物出発地点_3"],
+        (230, -60, 650, 50, null, 0,
+          <WorldObject>[
+            world.objects["障害物出発地点"]!,
+            world.objects["障害物出発地点_1"]!,
+            world.objects["障害物出発地点_2"]!,
           ]
         ), 0, ObjectManager.toRandomizePositionByCorners],
       ],
     ];
 
-
-    // マップPattern１
+        // マップPattern１
         // ---------------------------------------------
         // 🧩 パターン1の「動かし方」
         // ・建物_1 と UFO_1 を動かす
@@ -3314,8 +3472,9 @@ class MovingDisturverPlayer extends SuperPlayer {
         this.item_and_disturver_animation_film_3dlist_1 = [
             // 邪魔者の座標を動かす。
             [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, -10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_1"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+             [world.objects["建物_2"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_1"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
 
         // マップPattern２
@@ -3327,8 +3486,9 @@ class MovingDisturverPlayer extends SuperPlayer {
         this.item_and_disturver_animation_film_3dlist_2 = [
             // 邪魔者の座標を動かす。
             [[world.objects["建物_2"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 2), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_2"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+             [world.objects["建物_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_3"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
 
         // マップPattern３
@@ -3340,8 +3500,23 @@ class MovingDisturverPlayer extends SuperPlayer {
         this.item_and_disturver_animation_film_3dlist_3 = [
             // 邪魔者の座標を動かす。
             [[world.objects["建物_3"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_ランダム_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_3"], (world.objects["障害物出発地点_ランダム"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_4"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+          ];
+
+        // マップPattern４
+        // ---------------------------------------------
+        // 🧩 パターン3の「動かし方」
+        // ※これも今はパターン1と同じ
+        // だから「currentPatternが変わっても挙動が同じ」に見える可能性がある
+        // ---------------------------------------------
+        this.item_and_disturver_animation_film_3dlist_4 = [
+            // 邪魔者の座標を動かす。
+            [[world.objects["建物_4"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+             [world.objects["建物_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_4"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
       }
 
@@ -3394,8 +3569,10 @@ class MovingDisturverPlayer extends SuperPlayer {
       targetFilm = item_and_disturver_animation_film_3dlist_1;
     } else if (currentPattern == 2) {
       targetFilm = item_and_disturver_animation_film_3dlist_2;
-    } else {
+    } else if (currentPattern == 3){
       targetFilm = item_and_disturver_animation_film_3dlist_3;
+    } else {
+      targetFilm = item_and_disturver_animation_film_3dlist_4;
     }
 
     // 障害物出発地点処理を含有させる。
@@ -3542,6 +3719,11 @@ class GameJumpAnimationPlayer extends SuperPlayer {
         // 空中ジャンプだった
         if (touchingObj == null) {
           // -------------------------------------------------
+          // 効果音
+          // -------------------------------------------------
+          ObjectManager.playSound("n段ジャンプ音"); // 🔊 追加
+
+          // -------------------------------------------------
           // ジャンプアニメーションとして、一回転させる
           // -------------------------------------------------
           // 輪郭
@@ -3573,6 +3755,11 @@ class GameJumpAnimationPlayer extends SuperPlayer {
         } else {
           // 地上から → 「一回目のジャンプ」として強制カウント。
           this.continuous_jump_count = 1;
+
+          // -------------------------------------------------
+          // 効果音
+          // -------------------------------------------------
+          ObjectManager.playSound("ジャンプ音"); // 🔊 追加
         }
 
         // -------------------------------------------------
@@ -3979,6 +4166,12 @@ class AdjustFlagPlayer extends SuperPlayer {
     // ==============================
     if (itemHitDict["アイテム_羽_1"] == true)
     {
+
+      // ==============================
+      // 効果音
+      // ==============================
+      ObjectManager.playSound("アイテム取得"); // 🔊 追加
+
       // ==============================
       // ⬆ 空中ジャンプできる回数を1回増やす。
       // ==============================
@@ -4263,6 +4456,28 @@ class PointPlayer extends SuperPlayer {
 
     final double anoanoX = anoano.position.dx;
 
+
+    // ======================================================
+    // 🐢 10点ごとに速さをカメとウサギ関数で、
+    // 邪魔者オブジェクトスピードを速くする
+    // （駄目だバグが多すぎる（断念:2026年3月2日））
+    // ======================================================
+    // final int accelerationCount = point ~/ 10;
+    // final double newSpeed = ObjectManager.calcSpeed(
+    //   baseSpeed: 200,
+    //   maxSpeed:  500,
+    //   count:     accelerationCount,
+    //   ratio:     0.35,
+    // );
+    // world.movingDisturberPlayer.disturver_speed = newSpeed;
+
+    // // RunningTasks内の速度も即時反映
+    // ObjectManager.updateAllRunningTaskParam(
+    //   ObjectManager.moveToObjectToX,
+    //   2, // speedPerSec は0始まりで2番目
+    //   newSpeed,
+    // );
+
     // ======================================================
     // 障害物リストをすべて見ていく
     // ======================================================
@@ -4415,6 +4630,12 @@ class GameoverJudgmentPlayer extends SuperPlayer {
     {
       // ゲームオーバーflagをONにする。
       flag_gameover = true;
+
+      // ==========================================================
+      // 効果音
+      // ==========================================================
+      ObjectManager.playSound("ダメージ音"); // 🔊 追加
+
 
       // runningリストをすべて削除。
       ObjectManager.clearAllRunningTasks();
@@ -5248,7 +5469,6 @@ void main() {
 // 今後、init_schedule や game_schedule などを複数用意し、
 // 状況に応じて切り替える設計を想定している。
 //
-
 
 
 
