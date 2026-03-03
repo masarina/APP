@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:io';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
 
 // ============================
 // 広告プログラム
@@ -158,6 +162,8 @@ class SystemEnvService
   static bool isPortrait = true; // 縦向きかどうか
   static bool isTouching = false; // タップされているか
   static Offset? tapPosition; // タップされた座標
+  static final GlobalKey screenshotKey = GlobalKey(); // 📸 スクショ用：RepaintBoundaryのキー
+
 
   // ---- 上記の変数を更新するメソッド。（主にbuildで呼び出して更新）
   static void updateScreenInfo({
@@ -265,7 +271,8 @@ class AnimationDict {
       [world.objects["アノアノ左目"], (180,), 0, ObjectManager.toSetRotationDeg],
       [world.objects["アノアノ右目"], (world.objects["アノアノ輪郭"]!, 11, 22), 0, ObjectManager.toFollowWithOffset],
       [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, 27, 22), 0, ObjectManager.toFollowWithOffset],
-      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]
+      [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset],
+      [world.objects["アノアノ口"], (180,), 0, ObjectManager.toSetRotationDeg],
     ],
 
     "悲しい顔": [
@@ -753,6 +760,7 @@ class WorldPool {
   GameoverJudgmentPlayer gameoverJudgmentPlayer = GameoverJudgmentPlayer(); // ユーザからの入力判断
   GameOverDisplayPlayer gameOverDisplayPlayer = GameOverDisplayPlayer(); // ゲームオーバーの画面を作る。
   GameOverInputPlayer gameOverInputPlayer = GameOverInputPlayer(); // ゲームオーバー画面でのユーザからの入力操作で動く。
+  ScreenshotSharePlayer screenshotSharePlayer = ScreenshotSharePlayer(); // 📸 追加
 }
 final world = WorldPool();
 
@@ -2915,7 +2923,14 @@ class GameStoryPlayer extends SuperPlayer {
       height: 30,
       layer: 101, // 表示順番
     );
-
+    ObjectCreator.createImage(
+      objectName: "ポイント枠",
+      assetPath: "assets/images/waku.png",
+      position: Offset(this.hidden_xy, this.hidden_xy),
+      width: 500,
+      height:350,
+      layer: 307, // 表示順番
+    );
 
     // アニメーションフィルムの作成
     double jump_height = 50.0;
@@ -3164,11 +3179,17 @@ class GameInitPlayer extends SuperPlayer {
     this.animation_film_3dlist = [ // 🌙これ自体実行されていないことが判明しました。
 
         AnimationDict.match2d([ // この中に入れた二次元リストは、一つの二次元リストに変換されます。
+
           // 空想隠す。
           [
            [world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
            [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
            [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]
+          ],
+
+          // ポイント枠の出現
+          [
+           [world.objects["ポイント枠"], (0, -280), 0, ObjectManager.toSetPosition],
           ],
 
           // Skipボタン隠す。
@@ -3560,7 +3581,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_2"],
-        (230, -130, 900, 50, null, 0,
+        (230, 50, 900, 100, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3569,7 +3590,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_3"],
-        (230, -130, 900, 70, null, 0,
+        (230, -130, 900, -50, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3738,7 +3759,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   final Offset hiddenOffset = const Offset(-10000, -10000); // 隠す場所
   final Offset anoanoBiasOffset = const Offset(200, 500); // アノアノのバイアス座標
   late List<WorldObject> touchableObjects;
-  double jump_power = 220;
+  double jump_power = 170;
   bool _prevTouching = false; // 🆕 前フレームのタッチ状態
 
 
@@ -3913,7 +3934,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
         // runningリストに登録（上書きなので、ひとつ前のジャンプは抹消される。）
         ObjectManager.addRunningTask(
           world.objects["アノアノ輪郭"]!, ObjectManager.toJump,
-          (-150, 100, 300, 0.5, this.continuous_jump_max_num, true),
+          (-150, 100, this.jump_power, 0.5, this.continuous_jump_max_num, true),
         );
       }
 
@@ -3966,7 +3987,7 @@ class GameFallAnimationPlayer extends SuperPlayer {
   // 設定値
   // ====================================
   // 落下速度
-  double fallSpeed = 30;
+  double fallSpeed = 23;
 
   // ====================================
   // フラグ
@@ -4698,8 +4719,8 @@ class PointPlayer extends SuperPlayer {
           objectName: name,
           assetPath: digitAsset(0),
           position: const Offset(-10000, -10000),
-          width: 140,
-          height: 140,
+          width: 180,
+          height: 180,
           layer: 900000,
           enableCollision: false,
         );
@@ -4752,7 +4773,7 @@ class PointPlayer extends SuperPlayer {
       //
       // 「上に表示したい」ならマイナスにする。
       // だいたい “上から25%付近” ならこれがちょうどいい。
-      final double startY = -screen.height / 4;
+      final double startY = -260;
 
       // ★もしもっと上（ほぼ上端）にしたいなら例：
       // final double startY = -screen.height / 2 + 80;
@@ -4859,6 +4880,18 @@ class GameOverDisplayPlayer extends SuperPlayer {
         enableCollision: true,
         layer: 600
       );
+
+    // 📸 スクショ共有ボタン
+    ObjectCreator.createImage(
+      objectName: "スクショ共有ボタン",
+      assetPath: "assets/images/share_x.png", // ← 用意してね
+      position: Offset(hidden_xy, hidden_xy),
+      width: 120,
+      height: 60,
+      enableCollision: true,
+      layer: 601,
+    );
+
     ObjectCreator.createImage(objectName: "悲しい右目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 350);
     ObjectCreator.createImage(objectName: "悲しい左目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 351);
     ObjectCreator.createImage(objectName: "悲しい口",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,rotation: pi,enableCollision: true,layer: 352);
@@ -4873,8 +4906,13 @@ class GameOverDisplayPlayer extends SuperPlayer {
         [[world.objects["アノアノ口"], (0,), 0, ObjectManager.toSetRotationDeg]],
 
         // もう一回やるボタンの表示
-        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy + 300), 0, ObjectManager.toSetPosition]],
+        [[world.objects["もう一回やる？ボタン"], (center_down.dx + 30, center_down.dy - 130), 0, ObjectManager.toSetPosition]],
         
+        // スクショ共有ボタン
+        [[world.objects["スクショ共有ボタン"],
+          (center_down.dx, center_down.dy + 300), 0,
+          ObjectManager.toSetPosition]],
+          
         // 表情追従全解除
         AnimationDict.get("表情追従全解除"),
 
@@ -4927,6 +4965,7 @@ class GameOverInputPlayer extends SuperPlayer {
   void mainScript() {
 
     final mouikkai_button       = world.objects["もう一回やる？ボタン"];
+    final sukusyo_button = world.objects["スクショ共有ボタン"]!;
     final sadRightEye  = world.objects["悲しい右目"];
     final sadLeftEye   = world.objects["悲しい左目"];
     final sadMouth     = world.objects["悲しい口"];
@@ -4951,6 +4990,7 @@ class GameOverInputPlayer extends SuperPlayer {
 
       // ボタン・表情を隠す
       ObjectManager.toSetPosition(mouikkai_button, (hidden_xy.dx, hidden_xy.dy));
+      ObjectManager.toSetPosition(sukusyo_button, (hidden_xy.dx, hidden_xy.dy));
       ObjectManager.toSetPosition(sadRightEye, (hidden_xy.dx, hidden_xy.dy));
       ObjectManager.toSetPosition(sadLeftEye, (hidden_xy.dx, hidden_xy.dy));
       ObjectManager.toSetPosition(sadMouth, (hidden_xy.dx, hidden_xy.dy));
@@ -4970,6 +5010,14 @@ class GameOverInputPlayer extends SuperPlayer {
         }
       }
     }  // ← isClicked の閉じ
+
+
+    // 📸 スクショボタンが押されたら共有
+    final screenshotButton = world.objects["スクショ共有ボタン"];
+    if (screenshotButton != null &&
+        ComponentsService.isClicked(screenshotButton)) {
+      world.screenshotSharePlayer.takeAndShare(); // fire-and-forget（awaitしない）
+    }
   }    // ← mainScript の閉じ
 }      // ← クラスの閉じ
 
@@ -5544,6 +5592,128 @@ extension WorldObjectRenderExt on WorldObject {
 
 }
 
+// ==============================================================
+// 📸 ScreenshotSharePlayer（スクショしてXに投稿する係）
+// --------------------------------------------------------------
+// ・RepaintBoundary から画像を取得
+// ・上半分だけをクロップ
+// ・share_plus でXの投稿ダイアログを起動
+// ==============================================================
+class ScreenshotSharePlayer extends SuperPlayer {
+
+  bool _isTaking = false; // 📸 二重実行防止フラグ
+
+  @override
+  void init() {
+    _isTaking = false;
+  }
+
+  @override
+  void mainScript() {
+    // mainScriptはフレーム毎に呼ばれるが、
+    // スクショは「ボタン押下時に外から呼ぶ」設計なので
+    // ここでは何もしない。
+  }
+
+  // ==============================================================
+  // 📸 スクショして共有する（ゲームオーバー画面から呼び出す）
+  //
+  // 使い方：
+  // world.screenshotSharePlayer.takeAndShare();
+  // ==============================================================
+  Future<void> takeAndShare() async {
+    if (_isTaking) return;
+    _isTaking = true;
+
+    try {
+      // ① いったん全追従を解除
+      for (final cell in AnimationDict.get("表情追従全解除")) {
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+        func(obj, value);
+      }
+
+      // ② アノアノ輪郭（現実）を上部に配置
+      final anoano = world.objects["アノアノ輪郭"];
+      if (anoano != null) {
+        ObjectManager.removeAllRunningTasksOfObj(anoano);
+        ObjectManager.toSetPosition(anoano, (-10.0, -170.0));
+      }
+
+      // ③ ニコニコ笑顔で目・口を輪郭に追従させる
+      for (final cell in AnimationDict.get("ニコニコ笑顔")) {
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+        final result = func(obj, value);
+        if (result == "running") {
+          ObjectManager.addRunningTask(obj, func, value);
+        }
+      }
+
+      // ④ 1フレーム待って描画に反映
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // ④ スクショ本体（既存コードそのまま）
+      final boundary = SystemEnvService.screenshotKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) { _isTaking = false; return; }
+
+      final ui.Image fullImage = await boundary.toImage(pixelRatio: 2.0);
+      final int cropHeight = (fullImage.height / 2).round();
+      final recorder = ui.PictureRecorder();
+      final canvas   = Canvas(recorder);
+      final src = Rect.fromLTWH(0, 0, fullImage.width.toDouble(), cropHeight.toDouble());
+      final dst = Rect.fromLTWH(0, 0, fullImage.width.toDouble(), cropHeight.toDouble());
+      canvas.drawImageRect(fullImage, src, dst, Paint());
+      final ui.Image croppedImage = await recorder
+          .endRecording()
+          .toImage(fullImage.width, cropHeight);
+      final byteData = await croppedImage.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) { _isTaking = false; return; }
+      final bytes = byteData.buffer.asUint8List();
+
+      final tempDir  = await getTemporaryDirectory();
+      final filePath = '${tempDir.path}/anoano_score.png';
+      await File(filePath).writeAsBytes(bytes);
+
+      // ⑤ 共有ダイアログ起動
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: '🐾「アノアノ！」でスコア ${world.pointPlayer.point}点 獲得！ #アノアノ！ #ゆめからさめてない！じゃん！ #大臣プロジェクト！',
+      );
+
+    } catch (e) {
+      // debugPrint('📸 スクショ失敗: $e');
+    } finally {
+      // スクショ後：アノアノ輪郭を元の位置に戻す
+      final anoano = world.objects["アノアノ輪郭"];
+      if (anoano != null) {
+        ObjectManager.toSetPosition(anoano, (-150.0, 100.0)); // ← ゲーム中の定位置
+      }
+
+      // 表情追従を真剣顔に戻す
+      for (final cell in AnimationDict.get("表情追従全解除")) {
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+        func(obj, value);
+      }
+      for (final cell in AnimationDict.get("悲しい顔")) {
+        final Function func = cell[3];
+        final WorldObject obj = cell[0];
+        final dynamic value = cell[1];
+        final result = func(obj, value);
+        if (result == "running") {
+          ObjectManager.addRunningTask(obj, func, value);
+        }
+      }
+
+      _isTaking = false;
+    }
+  }
+}
 
 
 class WorldRenderer {
@@ -5569,7 +5739,11 @@ class WorldRenderer {
       AdOverlayService.buildOverlay(), // ← これを追加
     ];
 
-    return Stack(children: children);
+    // 📸 上半分だけキャプチャできるよう RepaintBoundary で囲む
+    return RepaintBoundary(
+      key: SystemEnvService.screenshotKey,
+      child: Stack(children: children),
+    );
   }
 
 
