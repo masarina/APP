@@ -5,9 +5,6 @@ import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'dart:io';
-
-
-
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 // ============================
@@ -86,6 +83,8 @@ class _JumpData {
   });
 }
 
+
+
 // 移動関数内部データ保持クラス
 class _MoveData {
   double startX;
@@ -105,6 +104,8 @@ class _MoveData {
   });
 }
 
+
+
 // ============================
 // デバッグ用
 // ============================
@@ -115,6 +116,8 @@ class DebugFlags {
   // 広告を隠す
   static bool hideAds = false;
 }
+
+
 // ==============================================================
 // ⏱️ 非同期 & 環境情報サービス
 // (OS / Flutter から来る 生の入力 を保持する場所)
@@ -1302,13 +1305,14 @@ class ObjectManager {
   }
 
 
-// ============================================================
+  // ============================================================
   // 🎲 ランダム配置（左上・右下で指定：おこちゃま版）
   // 使い方：(leftX, topY, rightX, bottomY, seed, margin, avoidObjects)
   // ・座標が逆でもOK（自動で左右・上下を直す）
   // ・seed は null で毎回ランダム / 数字で再現
   // ・margin は省略OK：端っこから内側にする余白
   // ・avoidObjects：重なりを避けたいオブジェクト一覧
+  // ・30回試してもダメなら、最後の候補地点をそのまま採用（諦め採用）
   // ============================================================
   static String toRandomizePositionByCorners(
     WorldObject obj,
@@ -1322,7 +1326,7 @@ class ObjectManager {
       List<WorldObject> avoidObjects, // 🆕 避けたいオブジェクト一覧
     ) params,
   ) {
-    // 🔧 avoidObjects も含めて全部展開
+    // 🔧 全パラメータを展開
     final (leftRaw, topRaw, rightRaw, bottomRaw, seed, marginRaw, avoidObjects) = params;
 
     final x1 = _toDouble(leftRaw);
@@ -1330,13 +1334,14 @@ class ObjectManager {
     final x2 = _toDouble(rightRaw);
     final y2 = _toDouble(bottomRaw);
 
+    // 🔄 左右・上下が逆でも自動修正
     double left   = min(x1, x2);
     double right  = max(x1, x2);
     double top    = min(y1, y2);
     double bottom = max(y1, y2);
 
+    // 📐 margin 適用
     final m = (marginRaw == null) ? 0.0 : _toDouble(marginRaw);
-
     if (right - left >= m * 2) { left += m; right -= m; }
     if (bottom - top >= m * 2) { top  += m; bottom -= m; }
 
@@ -1345,49 +1350,61 @@ class ObjectManager {
     final w = right - left;
     final h = bottom - top;
 
+    // 🎯 objのサイズを取得（ImageObject / GifObject 対応）
+    double objW = 0, objH = 0;
+    if (obj is ImageObject)    { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
+    else if (obj is GifObject) { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
+
+    // =============================================
+    // 🎲 候補生成ループ（avoidObjects なしでも1回は必ず通る）
+    // =============================================
     Offset candidate = Offset(
       (w <= 0) ? left : left + w * rng.nextDouble(),
       (h <= 0) ? top  : top  + h * rng.nextDouble(),
     );
 
-    // =============================================
-    // 🆕 重なり回避ループ
-    // =============================================
-    if (avoidObjects.isNotEmpty) {
-      for (int i = 0; i < 30; i++) { // 🔧 maxTries → 30 に直接指定
+    for (int i = 0; i < 30; i++) {
 
-        final cx = (w <= 0) ? left : left + w * rng.nextDouble();
-        final cy = (h <= 0) ? top  : top  + h * rng.nextDouble();
-        candidate = Offset(cx, cy);
+      final cx = (w <= 0) ? left : left + w * rng.nextDouble();
+      final cy = (h <= 0) ? top  : top  + h * rng.nextDouble();
+      candidate = Offset(cx, cy);
 
-        // objの当たり判定サイズを推定（ImageObject / GifObject 対応）
-        double objW = 0, objH = 0;
-        if (obj is ImageObject) { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
-        else if (obj is GifObject) { objW = obj.collisionSize.width; objH = obj.collisionSize.height; }
+      // avoidObjects が空なら即採用 🎯
+      if (avoidObjects.isEmpty) break;
 
-        // 候補地点でのコライダー矩形を仮想構築
+      // 📦 候補地点でのコライダー矩形を仮想構築
+      final candidateRect = Rect.fromCenter(
+        center: candidate,
+        width: objW,
+        height: objH,
+      );
+
+      // ✅ AFTER：重なっていなければ即採用して抜ける
+      bool overlaps = false;
+      for (final avoid in avoidObjects) {
+        final avoidRect = avoid.colliderRect;
+        if (avoidRect == null) continue;
+
         final candidateRect = Rect.fromCenter(
           center: candidate,
           width: objW,
           height: objH,
         );
-
-        // すべての「避けるべきオブジェクト」と重ならないか確認
-        bool overlaps = false;
-        for (final avoid in avoidObjects) {
-          final avoidRect = avoid.colliderRect;
-          if (avoidRect == null) continue;
-          if (candidateRect.overlaps(avoidRect)) {
-            overlaps = true;
-            break;
-          }
+        if (candidateRect.overlaps(avoidRect)) {
+          overlaps = true;
+          break;
         }
 
-        // 重ならなければ採用 🎯
-        if (!overlaps) break;
-
-        // 重なったまま最終試行なら candidateをそのまま妥eborg採用
+        final candidateTop    = candidate.dy - objH / 2;
+        final candidateBottom = candidate.dy + objH / 2;
+        final yOverlaps = candidateBottom > avoidRect.top && candidateTop < avoidRect.bottom;
+        if (yOverlaps) {
+          overlaps = true;
+          break;
+        }
       }
+
+      if (!overlaps) break;
     }
 
     obj.position = candidate;
@@ -2810,10 +2827,10 @@ class GameStoryPlayer extends SuperPlayer {
       height: 510,
       // width: 1100,
       // height: 1100,
-      layer: 301, // 表示順番
+      layer: 801, // 表示順番
       enableCollision: true, // ★これ
       // 見た目より大きいコライダー
-      collisionSize: const Size(710, 270),
+      collisionSize: const Size(710, 410),
       // 少し上に寄せる
       collisionOffset: const Offset(0, -30),
     );
@@ -2893,7 +2910,7 @@ class GameStoryPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "着地地点",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(-150, 122),
+      position: Offset(-150, 114),
       width: 30,
       height: 30,
       layer: 101, // 表示順番
@@ -2912,10 +2929,10 @@ class GameStoryPlayer extends SuperPlayer {
          [world.objects["着地地点"], ("ボタン",), 0, ObjectManager.toPlaySound]],
 
         // スキップボタンの配置　１秒待機
-        [[world.objects["スキップボタン"], (0, 180), 1, ObjectManager.toSetPosition]],
+        [[world.objects["スキップボタン"], (0, 250), 1, ObjectManager.toSetPosition]],
 
         // 地面を配置
-        [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
+        [[world.objects["地面"], (0, 375), 0, ObjectManager.toSetPosition]],
 
         // アノアノを左側にジャンプさせる。
         [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx, world.objects["着地地点"]!.position.dy, 300, 0.5, 1, false), 0, ObjectManager.toJump_to_ground]],
@@ -3296,32 +3313,6 @@ class GameInitPlayer extends SuperPlayer {
         // 少し右に寄せる
         collisionOffset: const Offset(14, 10),
       );
-      // UFO
-      ObjectCreator.createGIF(
-        objectName: "UFO_4",
-        assetPaths: [
-            "assets/images/ufo_1.png",
-            "assets/images/ufo_2.png",
-          ],
-        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: this.ufo_3_size,
-        height: this.ufo_3_size,
-        enableCollision: true,
-        layer: 406, // 表示順番
-      );
-      ObjectCreator.createGIF(
-        objectName: "UFO_5",
-        assetPaths: [
-            "assets/images/ufo_1.png",
-            "assets/images/ufo_2.png",
-          ],
-        position: Offset(this.hiddenOffset.dx, this.hiddenOffset.dy),
-        width: this.ufo_3_size,
-        height: this.ufo_3_size,
-        enableCollision: true,
-        layer: 406, // 表示順番
-      );
-
       // ============================================
       // アイテムオブジェクトの生成（見えないところに。）
       // ============================================
@@ -3408,8 +3399,8 @@ class ReceiveInputPlayer extends SuperPlayer {
       objectName: "障害物出発地点",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(300, 100),
-      width: 10,
-      height: 10,
+      width: 80,
+      height: 80,
       layer: 600000, // 表示順番
       enableCollision: true, // ★これ
       // 見た目より大きいコライダー
@@ -3421,9 +3412,9 @@ class ReceiveInputPlayer extends SuperPlayer {
     ObjectCreator.createImage(
       objectName: "障害物出発地点_1",
       assetPath: "assets/images/tomoyo.png",
-      position: Offset(50, 100),
-      width: 50,
-      height: 50,
+      position: Offset(300, 100),
+      width: 80,
+      height: 80,
       layer: 600000, // 表示順番
       enableCollision: true, // ★これ
       // 見た目より大きいコライダー
@@ -3436,8 +3427,8 @@ class ReceiveInputPlayer extends SuperPlayer {
       objectName: "障害物出発地点_2",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(50, 100),
-      width: 50,
-      height: 50,
+      width: 80,
+      height: 80,
       layer: 600000, // 表示順番
       enableCollision: true, // ★これ
       // 見た目より大きいコライダー
@@ -3450,8 +3441,8 @@ class ReceiveInputPlayer extends SuperPlayer {
       objectName: "障害物出発地点_3",
       assetPath: "assets/images/tomoyo.png",
       position: Offset(50, 100),
-      width: 50,
-      height: 50,
+      width: 80,
+      height: 80,
       layer: 600000, // 表示順番
       enableCollision: true, // ★これ
       // 見た目より大きいコライダー
@@ -3498,7 +3489,7 @@ class MovingDisturverPlayer extends SuperPlayer {
   // ※今のコードでは作ってるけど、まだ直接は使ってない（未来用）
   late Offset disturver_reset_position;
   // 💨 disturver_speed：じゃまものが動く速さ（1秒あたり）
-  double disturver_speed = 200; // 邪魔者オブジェクトのスピード
+  double disturver_speed = 220; // 邪魔者オブジェクトのスピード
 
   // 障害物マップを切り替えるの、秒数処理
   // ⏰ lastSwitchTimeSec：最後にパターンを変えた「秒」
@@ -3550,8 +3541,8 @@ class MovingDisturverPlayer extends SuperPlayer {
     // ---------------------------------------------
     this.ufo_start_ramdom_put = [
       [
-        [world.objects["障害物出発地点"],
-        (300, 100, 400, 100, null, 0, // この出発地点だけYは固定してください。
+        [world.objects["障害物出発地点"], // 座標OK
+        (230, 100, 900, 100, null, 0, // この出発地点だけYは固定してください。
           <WorldObject>[
             world.objects["障害物出発地点_1"]!,
             world.objects["障害物出発地点_2"]!,
@@ -3560,7 +3551,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_1"],
-        (300, 100, 450, 100, null, 0, // この出発地点だけYは固定してください。
+        (230, 100, 900, 100, null, 0, // この出発地点だけYは固定してください。
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_2"]!,
@@ -3569,7 +3560,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_2"],
-        (230, -60, 650, 50, null, 0,
+        (230, -130, 900, 50, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3578,7 +3569,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_3"],
-        (230, -60, 650, 50, null, 0,
+        (230, -130, 900, 70, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3597,8 +3588,9 @@ class MovingDisturverPlayer extends SuperPlayer {
         // ---------------------------------------------
         this.item_and_disturver_animation_film_3dlist_1 = [
             // 邪魔者の座標を動かす。
-            [[world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, -10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["建物_2"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            [
+             [world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, -10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
              [world.objects["UFO_1"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
              [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
@@ -3611,10 +3603,11 @@ class MovingDisturverPlayer extends SuperPlayer {
         // ---------------------------------------------
         this.item_and_disturver_animation_film_3dlist_2 = [
             // 邪魔者の座標を動かす。
-            [[world.objects["建物_2"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 2), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-            //  [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_3"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+            [
+             [world.objects["建物_2"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 2), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+             [world.objects["UFO_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
 
         // マップPattern３
@@ -3625,10 +3618,11 @@ class MovingDisturverPlayer extends SuperPlayer {
         // ---------------------------------------------
         this.item_and_disturver_animation_film_3dlist_3 = [
             // 邪魔者の座標を動かす。
-            [[world.objects["建物_3"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-            //  [world.objects["UFO_4"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
+            [
+             [world.objects["建物_3"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+             [world.objects["UFO_2"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]
+            ],
           ];
 
         // マップPattern４
@@ -3639,9 +3633,10 @@ class MovingDisturverPlayer extends SuperPlayer {
         // ---------------------------------------------
         this.item_and_disturver_animation_film_3dlist_4 = [
             // 邪魔者の座標を動かす。
-            [[world.objects["建物_4"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["建物_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_4"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            [
+             [world.objects["建物_1"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
+             [world.objects["UFO_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
              [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
       }
@@ -3668,8 +3663,8 @@ class MovingDisturverPlayer extends SuperPlayer {
       // ➕ パターン番号を1つ進める
       currentPattern++;
 
-      // 🔁 3を超えたら1に戻す（1→2→3→1→...）
-      if (currentPattern > 3) {
+      // 🔁 4を超えたら1に戻す（1→2→3→1→...）
+      if (currentPattern > 4) {
         currentPattern = 1;
       }
 
@@ -3979,6 +3974,7 @@ class GameFallAnimationPlayer extends SuperPlayer {
   bool fall_now = false; // 落下中でtrue
   Offset? frameStartPosition; // mainScript先頭のアノアノ座標
   Offset? frameEndPosition;   // mainScript末尾のアノアノ座標
+  late bool touchingNothing;
 
   @override
   void init() 
@@ -3996,6 +3992,12 @@ class GameFallAnimationPlayer extends SuperPlayer {
   void mainScript() {
 
     // ====================================================
+    // （hitListはCollisionGimmickPlayerが先に作ってくれているので安全）
+    // ====================================================
+    world.gameFallAnimationPlayer.touchingNothing =
+        world.collisionGimmickPlayer.hitList.isEmpty;
+
+    // ====================================================
     // ✅ フレーム先頭の座標を記録
     // ====================================================
     final anoano = world.objects["アノアノ輪郭"];
@@ -4006,12 +4008,9 @@ class GameFallAnimationPlayer extends SuperPlayer {
     // ====================================================
     // 先に、アノアノが何かに触れているか否かのbool判定。
     // ====================================================
-    bool touchingNothing = true;
-    for (final obj in world.gameJumpAnimationPlayer.touchableObjects) {
-      if (ComponentsService.hit(world.objects["アノアノ輪郭"]!, obj)) {
-        touchingNothing = false;
-        break;
-      }
+    // mainScript() 内では直接参照するだけ
+    if (!world.gameJumpAnimationPlayer.flag_jumping_now && this.touchingNothing) {
+      // 落下処理…
     }
 
     // ====================================================
@@ -4301,6 +4300,11 @@ class AdjustFlagPlayer extends SuperPlayer {
       // 効果音
       // ==============================
       ObjectManager.playSound("アイテム取得"); // 🔊 追加
+
+      // ==============================
+      // 効果音
+      // ==============================
+      world.pointPlayer.addPoint(500); // 🪶 羽取得ボーナス
 
       // ==============================
       // ⬆ 空中ジャンプできる回数を1回増やす。
@@ -4613,21 +4617,21 @@ class PointPlayer extends SuperPlayer {
   final List<ImageObject> digitObjs = [];
   String digitAsset(int d) => "assets/images/$d.png";
 
-  late List<WorldObject> pointObjects;
+  late Map<WorldObject, int> pointObjects;
 
   @override
   void init() {
     point = 0;
     _passedObjects.clear();
 
-    this.pointObjects = [
-        world.objects["建物_1"],
-        world.objects["建物_2"],
-        world.objects["建物_3"],
-        world.objects["UFO_1"],
-        world.objects["UFO_2"],
-        world.objects["UFO_3"],
-      ].whereType<WorldObject>().toList();
+    this.pointObjects = {
+      if (world.objects["建物_1"] != null) world.objects["建物_1"]!: 30,
+      if (world.objects["建物_2"] != null) world.objects["建物_2"]!: 30,
+      if (world.objects["建物_3"] != null) world.objects["建物_3"]!: 30,
+      if (world.objects["UFO_1"]  != null) world.objects["UFO_1"]!:  10,
+      if (world.objects["UFO_2"]  != null) world.objects["UFO_2"]!:  10,
+      if (world.objects["UFO_3"]  != null) world.objects["UFO_3"]!:  10,
+    };
 
     for (final o in digitObjs) {
       ObjectManager.toRemoveSelf(o, (true,));
@@ -4643,11 +4647,17 @@ class PointPlayer extends SuperPlayer {
 
     final double anoanoX = anoano.position.dx;
 
+    // ======================================================
+    // 前回と同じ点数ならスキップ
+    // ======================================================
+    int _prevPoint = -1;
+    if (point == _prevPoint) return;
+    _prevPoint = point;
 
     // ======================================================
     // 障害物リストをすべて見ていく
     // ======================================================
-    for (final obj in this.pointObjects) {
+    for (final obj in this.pointObjects.keys) {
 
       // -------------------------------------------------
       // 画面外（hidden）にいる間はスキップ
@@ -4663,7 +4673,7 @@ class PointPlayer extends SuperPlayer {
       }
 
       if (obj.position.dx < anoanoX) {
-        point += 1;
+        point += this.pointObjects[obj] ?? 1;
         _passedObjects.add(obj);
         // debugPrint("🏆 通過！ ${ComponentsService.getObjectName(obj)} → point = $point");
       }
@@ -4769,6 +4779,14 @@ class PointPlayer extends SuperPlayer {
       }
     }
   }
+
+  
+  // ==============================
+  // ポイントを追加するメソッド
+  // ==============================
+  void addPoint(int value) {
+    point += value;
+  }
 }
 
 
@@ -4855,7 +4873,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
         [[world.objects["アノアノ口"], (0,), 0, ObjectManager.toSetRotationDeg]],
 
         // もう一回やるボタンの表示
-        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy + 200), 0, ObjectManager.toSetPosition]],
+        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy + 300), 0, ObjectManager.toSetPosition]],
         
         // 表情追従全解除
         AnimationDict.get("表情追従全解除"),
@@ -4939,12 +4957,15 @@ class GameOverInputPlayer extends SuperPlayer {
 
       // ⭐ 障害物を隠す
       final hideTargets = [
-        "建物_1", "建物_2", "建物_3",
+        "建物_1", "建物_2", "建物_3", "建物_4", // 👈 追加
         "UFO_1", "UFO_2", "UFO_3",
+        "アイテム_羽_1", // 👈 追加
       ];
       for (final name in hideTargets) {
         final obj = world.objects[name];
         if (obj != null) {
+          ObjectManager.removeAllRunningTasksOfObj(obj); // 👈 追加（移動タスクも止める）
+          ObjectManager.removeMovingObject(obj);          // 👈 追加
           ObjectManager.toSetPosition(obj, (hidden_xy.dx, hidden_xy.dy));
         }
       }
@@ -5551,6 +5572,15 @@ class WorldRenderer {
     return Stack(children: children);
   }
 
+
+
+
+
+  // ✅ AFTER：layerが変わった時だけ再ソート
+  static List<WorldObject>? _cachedSorted;
+  static int _lastObjectCount = 0;
+
+  // ✅ AFTER：キャッシュを完全に廃止（シンプルが一番）
   static List<WorldObject> _sortedObjectsByLayer() {
     final list = world.objects.values.toList();
     list.sort((a, b) => a.layer.compareTo(b.layer));
