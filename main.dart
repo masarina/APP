@@ -3,6 +3,68 @@ import 'package:flutter/material.dart';
 import 'dart:math';
 import 'package:flutter/scheduler.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'dart:io';
+
+
+
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+// ============================
+// 広告プログラム
+// ============================
+class AdOverlayService {
+  static BannerAd? _banner;
+  static bool _loaded = false;
+  static bool visible = true;
+
+  static const String testBannerAdUnitId = 'ca-app-pub-3940256099942544/6300978111';
+
+  static void loadBanner({String? adUnitId}) {
+    if (_banner != null) return;
+    _loaded = false;
+    _banner = BannerAd(
+      size: AdSize.banner,
+      adUnitId: adUnitId ?? testBannerAdUnitId,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) { _loaded = true; },
+        onAdFailedToLoad: (ad, err) {
+          _loaded = false;
+          ad.dispose();
+          _banner = null;
+          Future.delayed(const Duration(seconds: 5), () {
+            loadBanner(adUnitId: adUnitId);
+          });
+        },
+      ),
+    );
+    _banner!.load();
+  }
+
+  static void disposeBanner() {
+    _banner?.dispose();
+    _banner = null;
+    _loaded = false;
+  }
+
+  static Widget buildOverlay() {
+    if (DebugFlags.hideAds) return const SizedBox.shrink();
+    if (!visible) return const SizedBox.shrink();
+    if (!_loaded || _banner == null) return const SizedBox.shrink();
+
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: SafeArea(
+        child: SizedBox(
+          width: _banner!.size.width.toDouble(),
+          height: _banner!.size.height.toDouble(),
+          child: AdWidget(ad: _banner!),
+        ),
+      ),
+    );
+  }
+}
 
 
 // ジャンプ内部データ保持クラス
@@ -2386,6 +2448,18 @@ class ObjectCreator {
 
 
   // ============================================================
+  // 広告バナーオブジェクト
+  // ============================================================
+  static void createAdBanner({
+    required String objectName,
+    String? adUnitId,
+    bool visible = true,
+  }) {
+    AdOverlayService.visible = visible;
+    AdOverlayService.loadBanner(adUnitId: adUnitId);
+  }
+
+  // ============================================================
   // 🎞 GIFアニメーションオブジェクト生成
   // ============================================================
   static void createGIF({
@@ -2461,9 +2535,29 @@ class InitPlayer extends SuperPlayer {
   bool background_created = false;
 
   // __init__(self)に同じ
-  @override
-  void init() {
-  }
+    @override
+    void init() {
+
+      // プラットフォームに応じて広告IDを切り替える
+      String adId;
+
+      // プラットフォームで 変数adID にkeyを代入 
+      if (Platform.isIOS) 
+      {
+        adId = "ca-app-pub-5254479547279489/8230472368"; // ← iOS本番ID
+      } 
+      else 
+      {
+        adId = "ca-app-pub-5254479547279489/3835357397"; // ← Android本番ID
+        // adId = "ca-app-pub-3940256099942544/6300978111"; // ← テストIDに変更
+      }
+
+      ObjectCreator.createAdBanner(
+        objectName: "広告バー",
+        adUnitId: adId,
+        visible: true,
+      );
+    }
   // 非同期サービスの開始
   
   // 最初に用意するオブジェクトと、それらの配置。
@@ -5307,7 +5401,7 @@ class _MyAppState extends State<MyApp>
     // ここでは Scaffold だけを返す
     // =============================================================
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 201, 47, 206),
+      backgroundColor: const Color.fromARGB(255, 0, 0, 0),
 
       body: GestureDetector(
         behavior: HitTestBehavior.opaque, // 🆕 透明部分もタッチ受け取る
@@ -5325,6 +5419,7 @@ class _MyAppState extends State<MyApp>
 
 
         child: Stack(
+          fit: StackFit.expand, // ✅ これを追加
           children: [
             WorldRenderer.draw(),
           ],
@@ -5450,6 +5545,7 @@ class WorldRenderer {
 
     final children = <Widget>[
       ...sortedObjects.map((o) => o.buildVisual(ctx)),
+      AdOverlayService.buildOverlay(), // ← これを追加
     ];
 
     return Stack(children: children);
@@ -5467,6 +5563,8 @@ class WorldRenderer {
 // 🖤 Flutter App（ここが「アプリの入口」＆「画面の土台」）
 // ==============================================================
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   runApp(
     const MaterialApp(
       home: MyApp(),
