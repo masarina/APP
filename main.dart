@@ -43,10 +43,16 @@ class _MoveData {
   });
 }
 
+// ============================
+// デバッグ用
+// ============================
 class DebugFlags {
-  static bool showColliders = true; 
-}
+  // コライダー判定領域の可視化
+  static bool showColliders = false;
 
+  // 広告を隠す
+  static bool hideAds = false;
+}
 // ==============================================================
 // ⏱️ 非同期 & 環境情報サービス
 // (OS / Flutter から来る 生の入力 を保持する場所)
@@ -721,6 +727,10 @@ class ObjectManager {
     "n段ジャンプ音": "sounds/se_jump_006.wav",
     "アイテム取得": "sounds/se_itemget_009.wav",
     "ダメージ音": "sounds/se_shot_003.wav",
+    "もこもこ1": "sounds/mokomoko1_2.mp3",
+    "もこもこ2": "sounds/mokomoko1_2.mp3",
+    "もこもこ3": "sounds/mokomoko3.mp3",
+    "ボタン": "sounds/coin08.mp3",
     // 今後はここに追加していくだけ
   };
 
@@ -792,7 +802,7 @@ class ObjectManager {
   static Future<void> playSound(String key) async {
     final path = soundDict[key];
     if (path == null) {
-      debugPrint("⚠️ soundDictに[$key]が存在しません");
+      // debugPrint("⚠️ soundDictに[$key]が存在しません");
       return;
     }
     // 毎回新しいAudioPlayerを作って再生（重なりOK）
@@ -801,6 +811,21 @@ class ObjectManager {
     // 再生終了後に自動で破棄
     player.onPlayerComplete.listen((_) => player.dispose());
   }
+
+
+  // ============================================================
+  // 🔊 フィルムから音を鳴らす用ラッパー
+  // （フィルムはfunc(obj, value)で呼ぶため、objが必要）
+  // ============================================================
+  static String toPlaySound(
+    WorldObject obj,   // フィルムの仕組み上必要（使わない）
+    (String key,) params,
+  ) {
+    final (key,) = params;
+    playSound(key); // fire-and-forget
+    return "ok";
+  }
+
 
   // ============================================================
   // ✅ runningTasks 内に、指定した関数が1つでもあれば false
@@ -1067,9 +1092,6 @@ class ObjectManager {
 
     // デバッグのため名前を取得
     String name = ComponentsService.getObjectName(obj);
-    // debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
-    // debugPrint("$name");
-    // debugPrint("🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌🐌");
     
 
     final (ground, extraGapY) = params;
@@ -2426,8 +2448,9 @@ class ObjectCreator {
     world.objects[debugName] = debugObj;
     owner.debugColliderVisual = debugObj;
   }
-}
 
+
+}
 
 
 // ==============================================================
@@ -2440,7 +2463,6 @@ class InitPlayer extends SuperPlayer {
   // __init__(self)に同じ
   @override
   void init() {
-    // 特になし
   }
   // 非同期サービスの開始
   
@@ -2448,6 +2470,7 @@ class InitPlayer extends SuperPlayer {
   @override
   void mainScript()
   {
+
     // 画面サイズが取得できていない場合は、背景作れないので、パス。
     if (SystemEnvService.screenSize == Size.zero) {
       return;
@@ -2789,11 +2812,13 @@ class GameStoryPlayer extends SuperPlayer {
 
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
-        // スタートボタンの退避
-        [[world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition]],
 
-        // スキップボタンの配置
-        [[world.objects["スキップボタン"], (0, 180), 0, ObjectManager.toSetPosition]],
+        // スタートボタンの退避
+        [[world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition],
+         [world.objects["着地地点"], ("ボタン",), 0, ObjectManager.toPlaySound]],
+
+        // スキップボタンの配置　１秒待機
+        [[world.objects["スキップボタン"], (0, 180), 1, ObjectManager.toSetPosition]],
 
         // 地面を配置
         [[world.objects["地面"], (0, 310), 0, ObjectManager.toSetPosition]],
@@ -2801,11 +2826,16 @@ class GameStoryPlayer extends SuperPlayer {
         // アノアノを左側にジャンプさせる。
         [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx, world.objects["着地地点"]!.position.dy, 300, 0.5, 1, false), 0, ObjectManager.toJump_to_ground]],
         
-        // 空想もこもこ表示
+        // １秒待機
         [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, this.hidden_xy, this.hidden_xy), 1, ObjectManager.toFollowWithOffset]], // １秒待機用
-        [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, 50, -50), 1, ObjectManager.toFollowWithOffset]],
-        [[world.objects["ちいさいもこもこ"], (world.objects["アノアノ輪郭"]!, 100, -100), 1, ObjectManager.toFollowWithOffset]],
-        [[world.objects["おおきいもこもこ"], (world.objects["アノアノ輪郭"]!, 150, -300), 1, ObjectManager.toFollowWithOffset]],
+
+        // 空想もこもこ表示
+        [[world.objects["ちいさいまる"], (world.objects["アノアノ輪郭"]!, 50, -50), 0, ObjectManager.toFollowWithOffset],
+         [world.objects["着地地点"], ("もこもこ1",), 1, ObjectManager.toPlaySound]],
+        [[world.objects["ちいさいもこもこ"], (world.objects["アノアノ輪郭"]!, 100, -100), 0, ObjectManager.toFollowWithOffset],
+         [world.objects["着地地点"], ("もこもこ2",), 1, ObjectManager.toPlaySound]],
+        [[world.objects["おおきいもこもこ"], (world.objects["アノアノ輪郭"]!, 150, -300), 0, ObjectManager.toFollowWithOffset],
+         [world.objects["着地地点"], ("もこもこ3",), 1, ObjectManager.toPlaySound]],
         
         // 空想アノアノの出現
         [[world.objects["空想アノアノ輪郭"], (world.objects["おおきいもこもこ"]!, 0, 0), 0, ObjectManager.toFollowWithOffset]],
@@ -2829,14 +2859,16 @@ class GameStoryPlayer extends SuperPlayer {
                                         80.0,
                                         jump_time, 
                                         1, 
-                                        false),0,ObjectManager.toJump_to_ground]],
+                                        false),0,ObjectManager.toJump_to_ground],
+         [world.objects["着地地点"], ("ジャンプ音",), 0, ObjectManager.toPlaySound]],
         [[world.objects["アノアノ輪郭"], (-150, 100, 300, 0.5, 1, false), 1, ObjectManager.toJump_to_ground]],
         [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
                                         world.objects["着地地点"]!.position.dy,
                                         80.0,
                                         jump_time, 
                                         1, 
-                                        false),0,ObjectManager.toJump_to_ground]],
+                                        false),0,ObjectManager.toJump_to_ground],
+         [world.objects["着地地点"], ("ジャンプ音",), 0, ObjectManager.toPlaySound]],
 
         // 現実アノアノが本気の顔になる
         AnimationDict.get("表情追従全解除"),
@@ -3486,8 +3518,8 @@ class MovingDisturverPlayer extends SuperPlayer {
         this.item_and_disturver_animation_film_3dlist_2 = [
             // 邪魔者の座標を動かす。
             [[world.objects["建物_2"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 2), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
-             [world.objects["建物_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+             [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            //  [world.objects["UFO_2"], (world.objects["障害物出発地点_2"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
              [world.objects["UFO_3"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
 
@@ -3501,7 +3533,7 @@ class MovingDisturverPlayer extends SuperPlayer {
             // 邪魔者の座標を動かす。
             [[world.objects["建物_3"], (world.objects["障害物出発地点"], world.objects["障害物終点"], this.disturver_speed, 0.0, 10), 0, ObjectManager.moveToObjectToX], // オブジェクトから、オブジェクトのXまで移動。
              [world.objects["アイテム_羽_1"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
-             [world.objects["UFO_4"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
+            //  [world.objects["UFO_4"], (world.objects["障害物出発地点_3"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX],
              [world.objects["UFO_3"], (world.objects["障害物出発地点_1"], world.objects["障害物終点"], this.disturver_speed, 0.0, 0.0), 0, ObjectManager.moveToObjectToX]],
           ];
 
@@ -3675,10 +3707,10 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   void mainScript() {
 
     // ======================================================
-    // 最大連続ジャンプ数の上限ガード（3枚を上限とする)
+    // 最大連続ジャンプ数の上限ガード（2枚を上限とする)
     // ======================================================
-    if (this.continuous_jump_max_num > 4) {
-      this.continuous_jump_max_num = 4;
+    if (this.continuous_jump_max_num > 3) {
+      this.continuous_jump_max_num = 3;
     }
 
     // ======================================================
@@ -3749,7 +3781,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
           this.continuous_jump_max_num -= 1;
 
           if (this.continuous_jump_max_num < 1) {
-            debugPrint("マイナス補正を実行しました");
+            // debugPrint("マイナス補正を実行しました");
             this.continuous_jump_max_num = 1;
           }
         } else {
@@ -4142,6 +4174,10 @@ class AdjustFlagPlayer extends SuperPlayer {
       "UFO_3": 4,
     };
 
+    // ============================================
+    // 🪶 羽デコ初期化（プールを先に2枚作る）
+    // ============================================
+    _initDecorationHanePool(initialCount: 2);
   }
 
   @override
@@ -4333,14 +4369,58 @@ class AdjustFlagPlayer extends SuperPlayer {
   }
 
 
+  void _initDecorationHanePool({int initialCount = 2}) {
+    final anoano = world.objects["アノアノ輪郭"];
+    if (anoano == null) return; // まだ居ないなら何もしない（後でupdate側で増やされる）
+
+    for (int i = 0; i < initialCount; i++) {
+      final name = "装飾羽_$i";
+
+      // すでに存在してたら拾ってリストへ（重複生成しない）
+      final existing = world.objects[name];
+      if (existing != null) {
+        if (!_decorationHaneList.contains(existing)) {
+          _decorationHaneList.add(existing);
+        }
+        // いったん退避
+        ObjectManager.removeAllRunningTasksOfObj(existing);
+        ObjectManager.toSetPosition(existing, (10000.0, 10000.0));
+        continue;
+      }
+
+      // 無ければ作る
+      ObjectCreator.createImage(
+        objectName: name,
+        assetPath: "assets/images/hane_1.png",
+        position: anoano.position,
+        width: 60,
+        height: 60,
+        layer: 102,
+      );
+
+      final obj = world.objects[name];
+      if (obj == null) continue;
+      _decorationHaneList.add(obj);
+
+      // いったん退避（まだ表示しない）
+      ObjectManager.toSetPosition(obj, (10000.0, 10000.0));
+    }
+  }
+
+
   // ==============================================================
   // 🪶 羽かざりメソッド
   // （アノアノのジャンプのこりかずだけ、羽をつけてあげるよ！）
   // ==============================================================
+  // 🪶 羽の付け根（根元）を、追従基準からどれだけズラすか
+  static const double _haneRootBiasX = -39.0;
+  static const double _haneRootBiasY = 2.0;
+
   // 🪶 羽のならびかたのかんかく設定
   // （おおきくすると、羽どうしがはなれるよ！）
-  static const double _haneIntervalX = -10.0; // 1まいごとに、どれだけ左にずれるか
-  static const double _haneIntervalY = -20.0; // 1まいごとに、どれだけ上にずれるか
+  static const double _haneIntervalX = 8.0; // 1まいごとに、どれだけ左にずれるか
+  static const double _haneIntervalY = -8.0; // 1まいごとに、どれだけ上にずれるか
+
   void updateDecorationHane() {
     // =================================
     // アノアノを取得
@@ -4365,6 +4445,17 @@ class AdjustFlagPlayer extends SuperPlayer {
     }
 
     // =======================================
+    // 🪶 world側に既にある羽を先に回収（プールの取りこぼし防止）
+    // =======================================
+    for (int i = _decorationHaneList.length; i < showCount; i++) {
+      final name = "装飾羽_$i";
+      final existing = world.objects[name];
+      if (existing != null && !_decorationHaneList.contains(existing)) {
+        _decorationHaneList.add(existing);
+      }
+    }
+
+    // =======================================
     // ✨ 羽オブジェクトがたりないとき、あたらしくつくる
     // =======================================
     while (_decorationHaneList.length < showCount) {
@@ -4375,8 +4466,8 @@ class AdjustFlagPlayer extends SuperPlayer {
         objectName: name,
         assetPath: "assets/images/hane_1.png",
         position: anoano.position,
-        width: 30,
-        height: 30,
+        width: 60,
+        height: 60,
         layer: 102,
       );
 
@@ -4390,9 +4481,11 @@ class AdjustFlagPlayer extends SuperPlayer {
     for (int i = 0; i < showCount; i++) {
       final hane = _decorationHaneList[i];
 
-      // 🧮 まい数（i+1）× かんかく で、じどうでずれる！
-      final offsetX = _haneIntervalX * (i + 1);
-      final offsetY = _haneIntervalY * (i + 1);
+      final chainX = _haneIntervalX * (i + 1);
+      final chainY = _haneIntervalY * (i + 1);
+
+      final offsetX = chainX + _haneRootBiasX;
+      final offsetY = chainY + _haneRootBiasY;
 
       ObjectManager.addRunningTask(
         hane,
@@ -4456,27 +4549,6 @@ class PointPlayer extends SuperPlayer {
 
     final double anoanoX = anoano.position.dx;
 
-
-    // ======================================================
-    // 🐢 10点ごとに速さをカメとウサギ関数で、
-    // 邪魔者オブジェクトスピードを速くする
-    // （駄目だバグが多すぎる（断念:2026年3月2日））
-    // ======================================================
-    // final int accelerationCount = point ~/ 10;
-    // final double newSpeed = ObjectManager.calcSpeed(
-    //   baseSpeed: 200,
-    //   maxSpeed:  500,
-    //   count:     accelerationCount,
-    //   ratio:     0.35,
-    // );
-    // world.movingDisturberPlayer.disturver_speed = newSpeed;
-
-    // // RunningTasks内の速度も即時反映
-    // ObjectManager.updateAllRunningTaskParam(
-    //   ObjectManager.moveToObjectToX,
-    //   2, // speedPerSec は0始まりで2番目
-    //   newSpeed,
-    // );
 
     // ======================================================
     // 障害物リストをすべて見ていく
@@ -4683,8 +4755,13 @@ class GameOverDisplayPlayer extends SuperPlayer {
       
       AnimationDict.match2d([
 
+        // 先に、二段ジャンプで回転したままゲムオバした可能性もあるので、先に角度をリセット。
+        [[world.objects["アノアノ両目_怒"], (0,), 0, ObjectManager.toSetRotationDeg]],
+        [[world.objects["アノアノ輪郭"], (0,), 0, ObjectManager.toSetRotationDeg]],
+        [[world.objects["アノアノ口"], (0,), 0, ObjectManager.toSetRotationDeg]],
+
         // もう一回やるボタンの表示
-        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy), 0, ObjectManager.toSetPosition]],
+        [[world.objects["もう一回やる？ボタン"], (center_down.dx, center_down.dy + 200), 0, ObjectManager.toSetPosition]],
         
         // 表情追従全解除
         AnimationDict.get("表情追従全解除"),
@@ -5230,7 +5307,7 @@ class _MyAppState extends State<MyApp>
     // ここでは Scaffold だけを返す
     // =============================================================
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color.fromARGB(255, 201, 47, 206),
 
       body: GestureDetector(
         behavior: HitTestBehavior.opaque, // 🆕 透明部分もタッチ受け取る
@@ -5246,7 +5323,13 @@ class _MyAppState extends State<MyApp>
         },
         onLongPressUp: () => SystemEnvService.setTouching(false), // 🆕
 
-        child: WorldRenderer.draw(),
+
+        child: Stack(
+          children: [
+            WorldRenderer.draw(),
+          ],
+        ),
+
       ),
     );
   }
@@ -5352,6 +5435,7 @@ class WorldRenderer {
   static Widget draw() {
     final screenSize = SystemEnvService.screenSize;
 
+
     // まだ画面サイズが取れてない時は空で返す
     if (screenSize == Size.zero) {
       return const SizedBox.shrink();
@@ -5365,7 +5449,6 @@ class WorldRenderer {
     final sortedObjects = _sortedObjectsByLayer();
 
     final children = <Widget>[
-      // ① 通常描画
       ...sortedObjects.map((o) => o.buildVisual(ctx)),
     ];
 
@@ -5380,16 +5463,10 @@ class WorldRenderer {
 }
 
 
-
 // ==============================================================
 // 🖤 Flutter App（ここが「アプリの入口」＆「画面の土台」）
 // ==============================================================
-void main() {
-
-  // =============================================================
-  // ✅ MaterialApp を最外層に配置
-  // これで毎フレーム再生成されなくなる
-  // =============================================================
+void main() async {
   runApp(
     const MaterialApp(
       home: MyApp(),
@@ -5397,9 +5474,6 @@ void main() {
     ),
   );
 }
-
-
-
 
 
 // =========================================================================
