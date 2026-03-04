@@ -9,7 +9,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-
+import 'package:url_launcher/url_launcher.dart';
 
 // ============================
 // 広告プログラム
@@ -2638,6 +2638,27 @@ class HomeInitPlayer extends SuperPlayer {
     // 材料の定義
     final screenSize = SystemEnvService.screenSize;
 
+    // 題名
+    ObjectCreator.createImage(
+      objectName: "題名",
+      assetPath: "assets/images/daimei.png", // ← テクスチャ名はここ！
+      position: Offset(hidden_xy, hidden_xy),
+      width: 300,
+      height: 300,
+      layer: 201,
+    );
+
+    // GitHubボタンを画面外に用意しておく
+    ObjectCreator.createImage(
+      objectName: "GitHubボタン",
+      assetPath: "assets/images/github_button.png", // ← テクスチャ名はここ！
+      position: Offset(hidden_xy, hidden_xy),
+      width: 60,
+      height: 60,
+      enableCollision: true,
+      layer: 201,
+    );
+
     // 真ん中下にアノアノ
     double bias_x = 1130;
     double bias_y = 1300;
@@ -2710,7 +2731,7 @@ class HomePlayer extends SuperPlayer {
 
   // アノアノの位置（ホーム画面に置ける位置。）
   double bias_x = 0;
-  double bias_y = 120;
+  double bias_y = 90;
 
   // アニメーションフィルム用キャッシュ
   String frame_result = "ok";
@@ -2738,8 +2759,14 @@ class HomePlayer extends SuperPlayer {
          [world.objects["アノアノ左目"], (world.objects["アノアノ輪郭"]!, -7, 0), 0, ObjectManager.toFollowWithOffset], // OK
          [world.objects["アノアノ口"], (world.objects["アノアノ輪郭"]!, 19, 27), 0, ObjectManager.toFollowWithOffset]], // OK
 
-        // スタートボタンを設置
-        [[world.objects["スタートボタン"], (0, 180), 0, ObjectManager.toSetPosition]],
+        [
+          // 題名を設置
+          [world.objects["題名"], (0, 0), 0, ObjectManager.toSetPosition],
+          // スタートボタンを設置
+          [world.objects["スタートボタン"], (0, 130), 0, ObjectManager.toSetPosition],
+          // GitHubボタンを設置
+         [world.objects["GitHubボタン"], (0, 250), 0, ObjectManager.toSetPosition]
+        ],
       ];
   }
   
@@ -2776,8 +2803,22 @@ class HomePlayer extends SuperPlayer {
     if (button != null &&
         ComponentsService.isClicked(button)) {
 
+      // 音
+      ObjectManager.playSound("ボタン"); 
       // debugPrint("🔥 スタートボタンが押されました");
       flag_start_button = true;
+    }
+
+    // GitHubボタンが押されたか判定
+    final githubButton = world.objects["GitHubボタン"];
+    if (githubButton != null &&
+        ComponentsService.isClicked(githubButton)) {
+        
+      ObjectManager.playSound("ボタン"); // 👈 追加
+
+      // GitHubを開く！
+      final uri = Uri.parse("https://github.com/masarina/APP/blob/main/main.dart");
+      launchUrl(uri, mode: LaunchMode.externalApplication);
     }
 
   }
@@ -2939,9 +2980,13 @@ class GameStoryPlayer extends SuperPlayer {
     // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
     this.animation_film_3dlist = [
 
-        // スタートボタンの退避
-        [[world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition],
-         [world.objects["着地地点"], ("ボタン",), 0, ObjectManager.toPlaySound]],
+        // 不要なオブジェクトの退避
+        [
+          [world.objects["スタートボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition],
+          [world.objects["着地地点"], ("ボタン",), 0, ObjectManager.toPlaySound],
+          [world.objects["GitHubボタン"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition],
+          [world.objects["題名"], (hidden_xy, hidden_xy), 0, ObjectManager.toSetPosition],
+        ],
 
         // スキップボタンの配置　１秒待機
         [[world.objects["スキップボタン"], (0, 250), 1, ObjectManager.toSetPosition]],
@@ -3032,6 +3077,9 @@ class GameStoryPlayer extends SuperPlayer {
     final button = world.objects["スキップボタン"];
     if (button != null &&
         ComponentsService.isClicked(button)) {
+    
+      ObjectManager.playSound("ボタン"); // 👈 追加
+
       // debugPrint("🐇 スキップボタンが押されました");
       this.flag_skip_button = true;
 
@@ -4988,6 +5036,8 @@ class GameOverInputPlayer extends SuperPlayer {
 
       // ストーリーテキストボタンが押された → テキスト画像 & 戻るボタンを出す
       if (ComponentsService.isClicked(storyButton)) {
+        ObjectManager.playSound("ボタン"); // 👈 追加
+      
         // ✅ 押される直前の座標を保存
         _savedStoryButtonPos  = storyButton.position;
         _savedSukusyoButtonPos = sukusyo_button.position;
@@ -5000,6 +5050,9 @@ class GameOverInputPlayer extends SuperPlayer {
 
       // 戻るボタンが押された → テキスト画像 & 戻るボタンを隠し、ストーリーボタンを再表示
       if (ComponentsService.isClicked(backButton)) {
+
+        ObjectManager.playSound("ボタン"); // 👈 追加
+
         ObjectManager.toSetPosition(storyImage, (hidden_xy.dx, hidden_xy.dy));
         ObjectManager.toSetPosition(backButton, (hidden_xy.dx, hidden_xy.dy));
 
@@ -5018,6 +5071,9 @@ class GameOverInputPlayer extends SuperPlayer {
     // 🖱 「もう一回やる？」ボタンのクリック判定
     // ============================================================
     if (ComponentsService.isClicked(mouikkai_button)) {
+
+      ObjectManager.playSound("ボタン"); // 👈 追加
+
       final name = ComponentsService.getObjectName(mouikkai_button);
       // debugPrint("$name が押されました。");
 
@@ -5055,6 +5111,9 @@ class GameOverInputPlayer extends SuperPlayer {
     final screenshotButton = world.objects["スクショ共有ボタン"];
     if (screenshotButton != null &&
         ComponentsService.isClicked(screenshotButton)) {
+
+      ObjectManager.playSound("ボタン"); // 👈 追加
+
       world.screenshotSharePlayer.takeAndShare(); // fire-and-forget（awaitしない）
     }
   }    // ← mainScript の閉じ
