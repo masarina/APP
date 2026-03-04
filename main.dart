@@ -2639,8 +2639,8 @@ class HomeInitPlayer extends SuperPlayer {
     final screenSize = SystemEnvService.screenSize;
 
     // 真ん中下にアノアノ
-    double bias_x = 130;
-    double bias_y = 300;
+    double bias_x = 1130;
+    double bias_y = 1300;
     ObjectCreator.createImage(
       objectName: "アノアノ右目",
       assetPath: "assets/images/nikkori.png",
@@ -3116,108 +3116,69 @@ class GameInitPlayer extends SuperPlayer {
   void init() {
 
     // ============================================
-    // ゲーム再開時のフラグリセット
-    // （2回目以降のゲーム開始でも、
-    // 　前回の状態が残らないようにする。）
-    // ============================================
-
-    // GameInitPlayer自身のフィルムキャッシュをリセット
+    // 🔵 自分自身のフィルムキャッシュリセット
     // （前回のゲームの続きから再生されないように。）
+    // ============================================
     this.frame_result = "ok";
     this.end_time = null;
     this.currentIndex = 0;
     this.flag_all_film_finished = false;
+    this.list_2d = [];
 
-    // 装飾羽をすべて退避・リセット
-    for (final hane in world.adjustFlagPlayer._decorationHaneList) {
-      ObjectManager.removeAllRunningTasksOfObj(hane);
-      ObjectManager.toSetPosition(hane, (10000.0, 10000.0));
-    }
-    world.adjustFlagPlayer._decorationHaneList.clear();
-
-    // GameOverDisplayPlayer のフィルムキャッシュをリセット
-    // （「もう一回やる？」ボタンの表示が残らないように。）
-    world.gameOverDisplayPlayer.frame_result = "ok";
-    world.gameOverDisplayPlayer.end_time = null;
-    world.gameOverDisplayPlayer.currentIndex = 0;
-    world.gameOverDisplayPlayer.film_finished = false;
-
-    // AdjustFlagPlayer のフラグをリセット
-    // （前回のゲームオーバー判定が持ち越されないように。）
-    world.adjustFlagPlayer.game_over = false;
-    world.adjustFlagPlayer.ground_now = false;
-
-    // GameoverJudgmentPlayer のフラグをリセット
-    // （ゲームオーバー状態が次回に持ち越されないように。）
-    world.gameoverJudgmentPlayer.flag_gameover = false;
-
-    // GameJumpAnimationPlayer のジャンプ状態をリセット
-    // （ジャンプ中フラグや連続ジャンプカウントが残らないように。）
-    world.gameJumpAnimationPlayer.flag_jumping_now = false;
-    world.gameJumpAnimationPlayer.continuous_jump_count = 0;
-    world.gameJumpAnimationPlayer.continuous_jump_max_num = 1; // 🆕 羽リセット
-
-    // GameFallAnimationPlayer の落下状態をリセット
-    // （落下中フラグと座標記録が残らないように。）
-    world.gameFallAnimationPlayer.fall_now = false;
-    world.gameFallAnimationPlayer.frameStartPosition = null;
-    world.gameFallAnimationPlayer.frameEndPosition = null;
-
-    // ObjectManager のジャンプデータをリセット
-    // （前回のジャンプ放物線データが残らないように。）
+    // ============================================
+    // 🔵 ObjectManagerのグローバルデータリセット
+    // （どのPlayerにも属さないので、ここが適切。）
+    // ============================================
     ObjectManager.resetAllJumpData();
 
-    // GameModeで使用されているプレイヤーのすべての初期化メソッドを（init()）を実行する。
+    // ============================================
+    // 🔵 各Playerに自分自身のリセットを委ねる
+    // （「他人の部屋に踏み込まない」設計。）
+    // ============================================
     for (final player in Mode_Game.players) {
       player.init();
     }
+    // GameOverDisplayPlayerはMode_Gameに含まれていないので個別に呼ぶ
+    world.gameOverDisplayPlayer.init();
 
-    list_2d = [];          // ★これを追加
+    // ============================================
+    // 🎬 アニメーションフィルムの作成
+    // ============================================
+    this.animation_film_3dlist = [
 
-    // アニメーションフィルムの作成
-    // →　[オブジェクト名、代入値(座標等)、待機時間、実行関数]
-    this.animation_film_3dlist = [ // 🌙これ自体実行されていないことが判明しました。
+        AnimationDict.match2d([
 
-        AnimationDict.match2d([ // この中に入れた二次元リストは、一つの二次元リストに変換されます。
-
-          // 空想隠す。
+          // 空想を隠す
           [
-           [world.objects["ちいさいまる"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-           [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
-           [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]
+          [world.objects["ちいさいまる"],   (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+          [world.objects["ちいさいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+          [world.objects["おおきいもこもこ"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition]
           ],
 
           // ポイント枠の出現
           [
-           [world.objects["ポイント枠"], (0, -280), 0, ObjectManager.toSetPosition],
+          [world.objects["ポイント枠"], (0, -280), 0, ObjectManager.toSetPosition],
           ],
 
-          // Skipボタン隠す。
+          // Skipボタン隠す
           [
-           [world.objects["スキップボタン"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
+          [world.objects["スキップボタン"], (this.hiddenOffset.dx, this.hiddenOffset.dy), 0, ObjectManager.toSetPosition],
           ],
 
           // アノアノを初期位置に瞬間移動
           [[world.objects["アノアノ輪郭"], (world.objects["着地地点"]!.position.dx,
                                           world.objects["着地地点"]!.position.dy,
                                           80.0,
-                                          0, 
-                                          1, 
-                                          false),0,ObjectManager.toJump_to_ground]],
+                                          0,
+                                          1,
+                                          false), 0, ObjectManager.toJump_to_ground]],
 
           // 真剣顔に変更
-          AnimationDict.get("表情追従全解除"), 
-          AnimationDict.get("表情全隠し"), 
+          AnimationDict.get("表情追従全解除"),
+          AnimationDict.get("表情全隠し"),
           AnimationDict.get("真剣顔")
         ])
     ];
-
-
-    // GameModeで使用されているプレイヤーのすべての初期化メソッドを（init()）を実行する。
-    for (final player in Mode_Game.players) {
-      player.init();
-    }
-
   }
   
   @override
@@ -3777,6 +3738,12 @@ class GameJumpAnimationPlayer extends SuperPlayer {
 
   @override
   void init() {
+
+    // 🆕 ジャンプ状態リセット
+    flag_jumping_now = false;
+    continuous_jump_count = 0;
+    continuous_jump_max_num = 1;
+
     this.touchableObjects = [
         world.objects["地面"],
         world.objects["建物_1"],
@@ -3987,7 +3954,7 @@ class GameFallAnimationPlayer extends SuperPlayer {
   // 設定値
   // ====================================
   // 落下速度
-  double fallSpeed = 23;
+  double fallSpeed = 30;
 
   // ====================================
   // フラグ
@@ -4261,6 +4228,13 @@ class AdjustFlagPlayer extends SuperPlayer {
   @override
   void init() {
     // ============================================
+    // 🆕 ゲームオーバーフラグをリセット
+    // （ここでリセットしないと、次のゲーム開始直後に
+    // 　即ゲームオーバー判定されてしまうよ！）
+    // ============================================
+    this.game_over = false;
+
+    // ============================================
     // アニメーションフィルムの作成
     // ============================================
     // アノアノジャンプをストップするフィルム
@@ -4287,6 +4261,13 @@ class AdjustFlagPlayer extends SuperPlayer {
       "UFO_2": 4,
       "UFO_3": 4,
     };
+
+    // 🆕 装飾羽をすべて退避・リセット
+    for (final hane in _decorationHaneList) {
+      ObjectManager.removeAllRunningTasksOfObj(hane);
+      ObjectManager.toSetPosition(hane, (10000.0, 10000.0));
+    }
+    _decorationHaneList.clear();
 
     // ============================================
     // 🪶 羽デコ初期化（プールを先に2枚作る）
@@ -4633,6 +4614,7 @@ class AdjustFlagPlayer extends SuperPlayer {
 // ==============================================================
 class PointPlayer extends SuperPlayer {
 
+  int _prevPoint = -1;
   int point = 0;
   final Set<WorldObject> _passedObjects = {};
   final List<ImageObject> digitObjs = [];
@@ -4643,7 +4625,34 @@ class PointPlayer extends SuperPlayer {
   @override
   void init() {
     point = 0;
+    _prevPoint = -1;
     _passedObjects.clear();
+
+    // 既存の数字オブジェクトを全部削除
+    for (final o in digitObjs) {
+      ObjectManager.toRemoveSelf(o, (true,));
+    }
+    digitObjs.clear();
+
+    // 0〜9 × 16桁ぶん、事前に全部生成しておく
+    for (int digit = 0; digit < 16; digit++) {
+      for (int num = 0; num <= 9; num++) {
+        final name = "スコア数字_${digit}_$num";
+        ObjectCreator.createImage(
+          objectName: name,
+          assetPath: digitAsset(num),
+          position: const Offset(-10000, -10000),
+          width: 180,
+          height: 180,
+          layer: 2000,
+          enableCollision: false,
+        );
+        final obj = world.objects[name];
+        if (obj is ImageObject) {
+          digitObjs.add(obj);
+        }
+      }
+    }
 
     this.pointObjects = {
       if (world.objects["建物_1"] != null) world.objects["建物_1"]!: 30,
@@ -4654,10 +4663,8 @@ class PointPlayer extends SuperPlayer {
       if (world.objects["UFO_3"]  != null) world.objects["UFO_3"]!:  10,
     };
 
-    for (final o in digitObjs) {
-      ObjectManager.toRemoveSelf(o, (true,));
-    }
-    digitObjs.clear();
+    // ✅ 0点を強制表示
+    _renderScore();
   }
 
   @override
@@ -4668,22 +4675,7 @@ class PointPlayer extends SuperPlayer {
 
     final double anoanoX = anoano.position.dx;
 
-    // ======================================================
-    // 前回と同じ点数ならスキップ
-    // ======================================================
-    int _prevPoint = -1;
-    if (point == _prevPoint) return;
-    _prevPoint = point;
-
-    // ======================================================
-    // 障害物リストをすべて見ていく
-    // ======================================================
     for (final obj in this.pointObjects.keys) {
-
-      // -------------------------------------------------
-      // 画面外（hidden）にいる間はスキップ
-      // （初期化直後に全部カウントされるのを防ぐ。）
-      // -------------------------------------------------
       if (obj.position.dx < -1000) continue;
 
       if (_passedObjects.contains(obj)) {
@@ -4696,112 +4688,59 @@ class PointPlayer extends SuperPlayer {
       if (obj.position.dx < anoanoX) {
         point += this.pointObjects[obj] ?? 1;
         _passedObjects.add(obj);
-        // debugPrint("🏆 通過！ ${ComponentsService.getObjectName(obj)} → point = $point");
       }
     }
 
-    // ======================================================
-    // ポイントを表示する
-    // ======================================================
-    final screen = SystemEnvService.screenSize;
-    if (screen != Size.zero) {
+    // 点数が変わっていなければスキップ
+    if (point == _prevPoint) return;
 
-      // -------------------------------------------------
-      // 数字オブジェクトが足りなければ追加生成
-      // （pointが増えて桁が増えた時に対応。）
-      // -------------------------------------------------
-      final digits = point.toString().split('').map((c) => int.tryParse(c) ?? 0).toList();
-      final showCount = digits.length;
-
-      while (digitObjs.length < showCount) {
-        final name = "スコア数字_${digitObjs.length}";
-        ObjectCreator.createImage(
-          objectName: name,
-          assetPath: digitAsset(0),
-          position: const Offset(-10000, -10000),
-          width: 180,
-          height: 180,
-          layer: 900000,
-          enableCollision: false,
-        );
-        final obj = world.objects[name];
-        if (obj is ImageObject) {
-          digitObjs.add(obj);
-        }
-      }
-
-      // -------------------------------------------------
-      // 各桁の画像を差し替え
-      // -------------------------------------------------
-      for (int i = 0; i < showCount; i++) {
-        digitObjs[i].assetPath = digitAsset(digits[i]);
-      }
-
-      // -------------------------------------------------
-      // ポイントを上に表示する
-      // ① 並べる間隔（横方向）
-      // -------------------------------------------------
-      // gapX を大きくすると数字同士が離れる。
-      // 小さくすると詰まる。
-      // 画像幅が40〜60くらいなら、60は見やすい設定。
-      final double gapX = 25.0;
-
-      // -------------------------------------------------
-      // ② 並べる全体の横幅を計算
-      // -------------------------------------------------
-      // showCount 個の数字を gapX 間隔で並べる時、
-      // 間隔は (showCount - 1) 個ある。
-      // 例：3桁なら「□-□-□」なので間隔は2つ。
-      final double totalWidth = gapX * (showCount - 1);
-
-      // -------------------------------------------------
-      // ③ 中央寄せのための startX を作る
-      // -------------------------------------------------
-      // 中央寄せにしたいので、全体幅の半分だけ左にずらした位置を
-      // 先頭のXにする。
-      // 例：totalWidth=120 なら startX=-60 から始めると
-      //     -60, 0, +60 に並んで “中央揃え” になる。
-      final double startX = -totalWidth / 2;
-
-      // -------------------------------------------------
-      // ④ 表示するY位置（上寄せ）
-      // -------------------------------------------------
-      // 画面中心基準なので…
-      //
-      // ・screen.height / 4  → 画面の中央より “下”
-      // ・-screen.height / 4 → 画面の中央より “上”
-      //
-      // 「上に表示したい」ならマイナスにする。
-      // だいたい “上から25%付近” ならこれがちょうどいい。
-      final double startY = -260;
-
-      // ★もしもっと上（ほぼ上端）にしたいなら例：
-      // final double startY = -screen.height / 2 + 80;
-      // （80は上端からの余白。好みで調整）
-
-      // -------------------------------------------------
-      // ⑤ 実際に並べる（表示する桁だけ）
-      // -------------------------------------------------
-      // digitObjs の先頭から showCount 個だけ取り出して配置する。
-      // sublist(0, showCount) にすることで、必要な桁だけ動かす。
-      ObjectManager.toArrangeEvenly(
-        digitObjs.sublist(0, showCount),
-        (startX, startY, gapX, 0),
-      );
-
-      // -------------------------------------------------
-      // ⑥ 使っていない桁は “画面外” に退避
-      // -------------------------------------------------
-      // showCount より後ろの桁（余った桁）は表示したくないので、
-      // 見えない場所（-10000, -10000）へ飛ばして隠す。
-      // これをやらないと、前回の配置が残って表示され続けることがある。
-      for (int i = showCount; i < digitObjs.length; i++) {
-        digitObjs[i].position = const Offset(-10000, -10000);
-      }
-    }
+    _renderScore(); // ✅ 表示はここだけ
   }
 
-  
+  // ==============================
+  // 🖼 スコア表示（init・mainScript共用）
+  // ==============================
+  void _renderScore() {
+    final screen = SystemEnvService.screenSize;
+    if (screen == Size.zero) return;
+
+    final digits = point.toString().split('').map((c) => int.tryParse(c) ?? 0).toList();
+    final showCount = digits.length;
+
+    const double gapX    = 25.0;
+    final double totalWidth = gapX * (showCount - 1);
+    final double startX  = -totalWidth / 2;
+    const double startY  = -260;
+
+    for (int d = 0; d < showCount; d++) {
+      final num = digits[d];
+
+      final showObj = world.objects["スコア数字_${d}_$num"];
+      if (showObj != null) {
+        showObj.position = Offset(startX + gapX * d, startY);
+      }
+
+      for (int n = 0; n <= 9; n++) {
+        if (n == num) continue;
+        final hideObj = world.objects["スコア数字_${d}_$n"];
+        if (hideObj != null) {
+          hideObj.position = const Offset(-10000, -10000);
+        }
+      }
+    }
+
+    for (int d = showCount; d < 16; d++) {
+      for (int n = 0; n <= 9; n++) {
+        final hideObj = world.objects["スコア数字_${d}_$n"];
+        if (hideObj != null) {
+          hideObj.position = const Offset(-10000, -10000);
+        }
+      }
+    }
+
+    _prevPoint = point; // ✅ ここで一元管理
+  }
+
   // ==============================
   // ポイントを追加するメソッド
   // ==============================
@@ -4864,6 +4803,13 @@ class GameOverDisplayPlayer extends SuperPlayer {
 
   @override
   void init() {
+
+    // 🆕 フィルムキャッシュをリセット
+    frame_result = "ok";
+    end_time = null;
+    currentIndex = 0;
+    film_finished = false;
+
     list_2d = [];
     center_down = Offset(0, screenSize.height / 4);
 
@@ -4892,6 +4838,38 @@ class GameOverDisplayPlayer extends SuperPlayer {
       layer: 601,
     );
 
+    // ストーリーテキスト画像（最初は隠す）
+    ObjectCreator.createImage(
+      objectName: "ストーリーテキスト画像",
+      assetPath: "assets/images/story_text.png", // ← 画像パスを合わせてね
+      position: Offset(hidden_xy, hidden_xy),
+      width: 400,
+      height: 400,
+      layer: 2001,
+    );
+
+    // ストーリーテキストボタン
+    ObjectCreator.createImage(
+      objectName: "ストーリーテキストボタン",
+      assetPath: "assets/images/story_button.png", // ← 画像パスを合わせてね
+      position: Offset(hidden_xy, hidden_xy),
+      width: 120,
+      height: 60,
+      enableCollision: true,
+      layer: 602,
+    );
+
+    // 戻るボタン（最初は隠す）
+    ObjectCreator.createImage(
+      objectName: "ストーリー戻るボタン",
+      assetPath: "assets/images/back_button.png", // ← 画像パスを合わせてね
+      position: Offset(hidden_xy, hidden_xy),
+      width: 50,
+      height: 50,
+      enableCollision: true,
+      layer: 2002,
+    );
+
     ObjectCreator.createImage(objectName: "悲しい右目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 350);
     ObjectCreator.createImage(objectName: "悲しい左目",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,enableCollision: true,layer: 351);
     ObjectCreator.createImage(objectName: "悲しい口",assetPath: "assets/images/once_again.png",position: Offset(hidden_xy, hidden_xy),width: 180,height: 80,rotation: pi,enableCollision: true,layer: 352);
@@ -4900,13 +4878,27 @@ class GameOverDisplayPlayer extends SuperPlayer {
       
       AnimationDict.match2d([
 
+        // ストーリーテキストボタンの表示
+        [[world.objects["ストーリーテキストボタン"],
+          (-100, 120, 100, 120, null, 0,
+            <WorldObject>[
+              if (world.objects["建物_1"] != null) world.objects["建物_1"]!,
+              if (world.objects["建物_2"] != null) world.objects["建物_2"]!,
+              if (world.objects["建物_3"] != null) world.objects["建物_3"]!,
+              if (world.objects["UFO_1"]  != null) world.objects["UFO_1"]!,
+              if (world.objects["UFO_2"]  != null) world.objects["UFO_2"]!,
+              if (world.objects["UFO_3"]  != null) world.objects["UFO_3"]!,
+              if (world.objects["アイテム_羽_1"] != null) world.objects["アイテム_羽_1"]!,
+            ]
+          ), 0, ObjectManager.toRandomizePositionByCorners]],
+
         // 先に、二段ジャンプで回転したままゲムオバした可能性もあるので、先に角度をリセット。
         [[world.objects["アノアノ両目_怒"], (0,), 0, ObjectManager.toSetRotationDeg]],
         [[world.objects["アノアノ輪郭"], (0,), 0, ObjectManager.toSetRotationDeg]],
         [[world.objects["アノアノ口"], (0,), 0, ObjectManager.toSetRotationDeg]],
 
         // もう一回やるボタンの表示
-        [[world.objects["もう一回やる？ボタン"], (center_down.dx + 30, center_down.dy - 130), 0, ObjectManager.toSetPosition]],
+        [[world.objects["もう一回やる？ボタン"], (center_down.dx + 30, center_down.dy - 90), 0, ObjectManager.toSetPosition]],
         
         // スクショ共有ボタン
         [[world.objects["スクショ共有ボタン"],
@@ -4951,13 +4943,22 @@ class GameOverDisplayPlayer extends SuperPlayer {
 
 
 class GameOverInputPlayer extends SuperPlayer {
-
+  Offset? _savedStoryButtonPos;
+  Offset? _savedSukusyoButtonPos;
   bool flag_one_more_start_button = false;
 
   final Offset hidden_xy = const Offset(10000, 10000);
 
   @override
   void init() {
+    _savedStoryButtonPos   = null; // ✅ 追加
+    _savedSukusyoButtonPos = null; // ✅ 追加
+    final storyImage = world.objects["ストーリーテキスト画像"];
+    final backButton  = world.objects["ストーリー戻るボタン"];
+    final storyButton = world.objects["ストーリーテキストボタン"];
+    if (storyImage  != null) ObjectManager.toSetPosition(storyImage,  (10000.0, 10000.0));
+    if (backButton  != null) ObjectManager.toSetPosition(backButton,  (10000.0, 10000.0));
+    if (storyButton != null) ObjectManager.toSetPosition(storyButton, (10000.0, 10000.0));
     flag_one_more_start_button = false;
   }
 
@@ -4974,6 +4975,44 @@ class GameOverInputPlayer extends SuperPlayer {
         sadRightEye == null ||
         sadLeftEye == null ||
         sadMouth == null) return;
+
+
+    // ============================================================
+    // 📖 「ストーリーテキスト」ボタンのクリック判定
+    // ============================================================
+    final storyButton = world.objects["ストーリーテキストボタン"];
+    final storyImage  = world.objects["ストーリーテキスト画像"];
+    final backButton  = world.objects["ストーリー戻るボタン"];
+
+    if (storyButton != null && storyImage != null && backButton != null) {
+
+      // ストーリーテキストボタンが押された → テキスト画像 & 戻るボタンを出す
+      if (ComponentsService.isClicked(storyButton)) {
+        // ✅ 押される直前の座標を保存
+        _savedStoryButtonPos  = storyButton.position;
+        _savedSukusyoButtonPos = sukusyo_button.position;
+
+        ObjectManager.toSetPosition(storyImage,  (0.0, 0.0));
+        ObjectManager.toSetPosition(backButton,  (0.0, 290.0));
+        ObjectManager.toSetPosition(storyButton, (hidden_xy.dx, hidden_xy.dy));
+        ObjectManager.toSetPosition(sukusyo_button, (hidden_xy.dx, hidden_xy.dy));
+      }
+
+      // 戻るボタンが押された → テキスト画像 & 戻るボタンを隠し、ストーリーボタンを再表示
+      if (ComponentsService.isClicked(backButton)) {
+        ObjectManager.toSetPosition(storyImage, (hidden_xy.dx, hidden_xy.dy));
+        ObjectManager.toSetPosition(backButton, (hidden_xy.dx, hidden_xy.dy));
+
+        // ✅ 保存した座標に戻す（なければフォールバック）
+        final sPos = _savedStoryButtonPos;
+        final xPos = _savedSukusyoButtonPos;
+        ObjectManager.toSetPosition(storyButton,
+          sPos != null ? (sPos.dx, sPos.dy) : (world.gameOverDisplayPlayer.center_down.dx, world.gameOverDisplayPlayer.center_down.dy));
+        ObjectManager.toSetPosition(sukusyo_button,
+          xPos != null ? (xPos.dx, xPos.dy) : (world.gameOverDisplayPlayer.center_down.dx, world.gameOverDisplayPlayer.center_down.dy + 300));
+      }
+    }
+
 
     // ============================================================
     // 🖱 「もう一回やる？」ボタンのクリック判定
@@ -5681,7 +5720,7 @@ class ScreenshotSharePlayer extends SuperPlayer {
       // ⑤ 共有ダイアログ起動
       await Share.shareXFiles(
         [XFile(filePath)],
-        text: '🐾「アノアノ！」でスコア ${world.pointPlayer.point}点 獲得！ #アノアノ！ #ゆめからさめてない！じゃん！ #大臣プロジェクト！',
+        text: '🐾「アノアノ！」でスコア ${world.pointPlayer.point}点 獲得！ #アノアノ！ #ゆめからさめてない！じゃん！ #大臣プロジェクト！ @Masarina002',
       );
 
     } catch (e) {
