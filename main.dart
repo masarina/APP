@@ -17,6 +17,8 @@
 // 2026年3月5日
 // ==================================================
 
+
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:math';
@@ -29,6 +31,7 @@ import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================
 // 広告プログラム
@@ -891,19 +894,30 @@ class ObjectManager {
   // 音を簡単に再生できるメソッド
   // 例: ObjectManager.playSound("ジャンプ音");
   // ============================================================
-  static Future<void> playSound(String key) async {
-    final path = soundDict[key];
-    if (path == null) {
-      // debugPrint("⚠️ soundDictに[$key]が存在しません");
-      return;
+  static final Map<String, AudioPlayer> _playerPool = {};
+
+  /// アプリ起動時に一度だけ呼ぶ（main() 等で）
+  static Future<void> preloadAllSounds() async {
+    for (final entry in soundDict.entries) {
+      final player = AudioPlayer();
+      await player.setSourceAsset(entry.value); // ロードだけしてキャッシュ
+      _playerPool[entry.key] = player;
     }
-    // 毎回新しいAudioPlayerを作って再生（重なりOK）
-    final player = AudioPlayer();
-    await player.play(AssetSource(path));
-    // 再生終了後に自動で破棄
-    player.onPlayerComplete.listen((_) => player.dispose());
   }
 
+  static Future<void> playSound(String key) async {
+    final soundPath = soundDict[key];
+    if (soundPath == null) return;
+
+    // 🔊 毎回新しいPlayerを作って鳴らす（stop→playの無音バグ回避）
+    final player = AudioPlayer();
+    await player.play(AssetSource(soundPath));
+
+    // 再生終了後に自動でdispose
+    player.onPlayerComplete.listen((_) {
+      player.dispose();
+    });
+  }
 
   // ============================================================
   // 🔊 フィルムから音を鳴らす用ラッパー
@@ -1642,7 +1656,9 @@ class ObjectManager {
         jumpCount: 1,
       );
 
-    } else {
+    } 
+    else 
+    {
 
       final data = _jumpingObjects[obj]!;
 
@@ -1827,16 +1843,18 @@ class ObjectManager {
       final now = DateTime.now().millisecondsSinceEpoch;
 
       if (!_jumpingObjects.containsKey(obj)) {
-        // ⭐ 常に今の位置を開始地点にする
+        // flag_more_jump=true（二段ジャンプ以降）の場合は
+        // jumpCount を 2 から始める（1段目扱いにしない）
+        final initialJumpCount = flag_more_jump ? 2 : 1;
+
         _jumpingObjects[obj] = _JumpData(
           startX: obj.position.dx,
           startY: obj.position.dy,
           landingX: targetX,
           landingY: targetY,
           startTimeMs: now,
-          jumpCount: 1,
+          jumpCount: initialJumpCount,
         );
-
       }
       else {
         final data = _jumpingObjects[obj]!;
@@ -2364,6 +2382,7 @@ class ImageObject extends WorldObject {
   double width;
   double height;
   double rotation;
+  bool forceFit; // ← 追加
 
   // ⭐ 当たり判定設定
   Offset collisionOffset;
@@ -2376,6 +2395,7 @@ class ImageObject extends WorldObject {
     required this.width,
     required this.height,
     this.rotation = 0.0,
+    this.forceFit = false, // ← 追加（デフォルトfalse）
     bool enableCollision = false,
     Offset? collisionOffset,
     Size? collisionSize,
@@ -2464,6 +2484,7 @@ class ObjectCreator {
     required double width,        // 画像の横幅
     required double height,       // 画像の縦幅
     double rotation = 0.0,        // 回転角（ラジアン）
+    bool forceFit = false, // ← 追加
 
     bool enableCollision = false, // 当たり判定を有効にするか
     Offset? collisionOffset,      // 当たり判定の中心ズレ調整
@@ -2476,6 +2497,7 @@ class ObjectCreator {
       width: width,                 // 横幅
       height: height,               // 縦幅
       rotation: rotation,           // 回転角
+      forceFit: forceFit, // ← 追加
       enableCollision: enableCollision, // 当たり判定ON/OFF
       collisionOffset: collisionOffset, // 判定位置補正
       collisionSize: collisionSize,     // 判定サイズ
@@ -2745,6 +2767,7 @@ class HomePlayer extends SuperPlayer {
   // class変数
   // ---------------------------------------- 
   // スタートボタンflag
+  bool _githubButtonConsumed = false; // 🆕 追加
   bool flag_start_button = false;
   final screenSize = SystemEnvService.screenSize;
 
@@ -2830,20 +2853,25 @@ class HomePlayer extends SuperPlayer {
 
     // GitHubボタンが押されたか判定
     final githubButton = world.objects["GitHubボタン"];
-    if (githubButton != null &&
-        ComponentsService.isClicked(githubButton)) {
-        
-      ObjectManager.playSound("ボタン"); // 👈 追加
+    if (githubButton != null) {
 
-      // GitHubを開く！
-      final uri = Uri.parse("https://github.com/masarina/APP/blob/main/main.dart");
-      launchUrl(uri, mode: LaunchMode.externalApplication);
+      // タッチが離れたらフラグをリセット
+      if (!SystemEnvService.isTouching) {
+        _githubButtonConsumed = false; // 🆕
+      }
+
+      if (!_githubButtonConsumed &&        // 🆕 まだ消費していない
+          ComponentsService.isClicked(githubButton)) {
+
+        _githubButtonConsumed = true;      // 🆕 消費済みにする
+        ObjectManager.playSound("ボタン");
+
+        final uri = Uri.parse("...");
+        launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
     }
-
   }
-
 }
-
 
 // ゲームストーリーを再生するPlayer
 class GameStoryPlayer extends SuperPlayer {
@@ -3609,7 +3637,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_2"],
-        (230, 50, 900, 100, null, 0,
+        (230, 50, 900, 50, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3618,7 +3646,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_3"],
-        (230, -130, 900, -50, null, 0,
+        (230, -100, 900, -50, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3787,7 +3815,7 @@ class GameJumpAnimationPlayer extends SuperPlayer {
   final Offset hiddenOffset = const Offset(-10000, -10000); // 隠す場所
   final Offset anoanoBiasOffset = const Offset(200, 500); // アノアノのバイアス座標
   late List<WorldObject> touchableObjects;
-  double jump_power = 170;
+  double jump_power = 130;
   bool _prevTouching = false; // 🆕 前フレームのタッチ状態
 
 
@@ -4340,6 +4368,7 @@ class AdjustFlagPlayer extends SuperPlayer {
     // 🪶 羽デコ初期化（プールを先に2枚作る）
     // ============================================
     _initDecorationHanePool(initialCount: 2);
+
   }
 
   @override
@@ -4456,8 +4485,9 @@ class AdjustFlagPlayer extends SuperPlayer {
           // → ちゃんと着地させる！
           // ==============================
           if (
-              !world.receiveInputPlayer.isTouching && // touchなし
-              world.gameFallAnimationPlayer.fall_now // 落下中
+              // !world.receiveInputPlayer.isTouching && // touchなし
+              !world.gameJumpAnimationPlayer.flag_jumping_now // ジャンプ中でなければ着地処理する
+              // world.gameFallAnimationPlayer.fall_now // 落下中
             ) 
           {
             // ==============================
@@ -4685,15 +4715,46 @@ class PointPlayer extends SuperPlayer {
   int point = 0;
   final Set<WorldObject> _passedObjects = {};
   final List<ImageObject> digitObjs = [];
+
+  // 🏅 ハイスコア関連
+  int highScore = 0;
+  int _prevHighScore = -1;
+  final List<ImageObject> highScoreDigitObjs = [];
+  bool _highScoreVisible = false; // GameInit以降に表示するフラグ
+
   String digitAsset(int d) => "assets/images/$d.png";
 
   late Map<WorldObject, int> pointObjects;
+
+
+  // ------------------------------------------
+  // ストレージ読み込み（非同期）
+  // ------------------------------------------
+  Future<void> loadHighScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    highScore = prefs.getInt('high_score') ?? 0;
+    _prevHighScore = -1;
+
+    // 描画フレームが1回以上走るのを待ってから表示
+    await Future.delayed(const Duration(milliseconds: 200));
+    _renderHighScore();
+  }
+
+  // ------------------------------------------
+  // ストレージ保存（非同期）
+  // ------------------------------------------
+  Future<void> saveHighScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('high_score', highScore);
+  }
+
 
   @override
   void init() {
     point = 0;
     _prevPoint = -1;
     _passedObjects.clear();
+    _highScoreVisible = true; // GameInit以降は表示ON
 
     // 既存の数字オブジェクトを全部削除
     for (final o in digitObjs) {
@@ -4730,9 +4791,75 @@ class PointPlayer extends SuperPlayer {
       if (world.objects["UFO_3"]  != null) world.objects["UFO_3"]!:  10,
     };
 
+    // ✅ ハイスコア用オブジェクトを生成（←これが抜けていた！）
+    _ensureHighScoreObjects();
+
     // ✅ 0点を強制表示
     _renderScore();
+
+    // ✅ ストレージからハイスコアを非同期で読み込む
+    loadHighScore();
   }
+
+
+  // ------------------------------------------
+  // ハイスコア用オブジェクトを用意
+  // （ラベル画像 ＋ 数字プール）
+  // ------------------------------------------
+  void _ensureHighScoreObjects() {
+
+    // ラベル画像（「最高記録」）
+    // すでにあれば座標だけリセット、なければ生成
+    const String labelName = "最高記録ラベル";
+    final existingLabel = world.objects[labelName];
+    if (existingLabel != null) {
+      existingLabel.position = const Offset(-10000, -10000);
+    } else {
+      ObjectCreator.createImage(
+        objectName: labelName,
+        assetPath: "assets/images/saikou_kiroku.png", // ← あとで差し替えてね
+        position: const Offset(-10000, -10000),
+        width: _hsLabelWidth,
+        height: _hsLabelHeight,
+        layer: 1999,
+        enableCollision: false,
+      );
+    }
+
+    // 数字プール
+    for (final o in highScoreDigitObjs) {
+      o.position = const Offset(-10000, -10000);
+    }
+    highScoreDigitObjs.clear();
+
+    for (int digit = 0; digit < 8; digit++) {
+      for (int num = 0; num <= 9; num++) {
+        final name = "ハイスコア数字_${digit}_$num";
+        final existing = world.objects[name];
+        if (existing is ImageObject) {
+          existing.position = const Offset(-10000, -10000);
+          highScoreDigitObjs.add(existing);
+          continue;
+        }
+        ObjectCreator.createImage(
+          objectName: name,
+          assetPath: digitAsset(num),
+          position: const Offset(-10000, -10000),
+          width: _hsDigitWidth,
+          height: _hsDigitHeight,
+          layer: 1999,
+          enableCollision: false,
+          forceFit: true, // ← 追加
+
+        );
+        final obj = world.objects[name];
+        if (obj is ImageObject) {
+          highScoreDigitObjs.add(obj);
+        }
+      }
+    }
+  }
+
 
   @override
   void mainScript() {
@@ -4758,26 +4885,21 @@ class PointPlayer extends SuperPlayer {
       }
     }
 
-    // 点数が変わっていなければスキップ
     if (point == _prevPoint) return;
-
-    _renderScore(); // ✅ 表示はここだけ
+    _renderScore();
   }
 
   // ==============================
-  // 🖼 スコア表示（init・mainScript共用）
+  // 🖼 通常スコア表示
   // ==============================
   void _renderScore() {
-    final screen = SystemEnvService.screenSize;
-    if (screen == Size.zero) return;
-
     final digits = point.toString().split('').map((c) => int.tryParse(c) ?? 0).toList();
     final showCount = digits.length;
 
     const double gapX    = 25.0;
     final double totalWidth = gapX * (showCount - 1);
     final double startX  = -totalWidth / 2;
-    const double startY  = -260;
+    const double startY  = -230;
 
     for (int d = 0; d < showCount; d++) {
       final num = digits[d];
@@ -4808,11 +4930,85 @@ class PointPlayer extends SuperPlayer {
     _prevPoint = point; // ✅ ここで一元管理
   }
 
+
+
+  // ==============================
+  // 🏅 ハイスコア表示
+  // ==============================
+  static const double _hsDigitGapX   = 10.0;   // 数字どうしのすきま
+  static const double _hsDigitY      = -318.0;  // 数字のY座標（マイナス＝上）
+  static const double _hsLabelY      = -340.0;  // ラベルのY座標
+  static const double _hsDigitWidth  = 40.0;   // 数字の横サイズ
+  static const double _hsDigitHeight = 60.0;   // 数字の縦サイズ
+  static const double _hsLabelWidth  = 160.0;   // ラベルの横サイズ
+  static const double _hsLabelHeight = 160.0;    // ラベルの縦サイズ
+
+  void _renderHighScore() {
+    if (!_highScoreVisible) return;
+
+    final digits = highScore.toString().split('').map((c) => int.tryParse(c) ?? 0).toList();
+    final showCount = digits.length;
+
+    final double totalWidth = _hsDigitGapX * (showCount - 1);
+    final double startX = -totalWidth / 2;
+
+    // ラベル
+    final label = world.objects["最高記録ラベル"];
+    if (label != null) {
+      label.position = Offset(0, _hsLabelY);
+      if (label is ImageObject) {
+        label.rotation = -3 * pi / 180; // 左に3度だけかたむける
+      }
+    }
+
+    // 数字
+    for (int d = 0; d < showCount; d++) {
+      final num = digits[d];
+      final showObj = world.objects["ハイスコア数字_${d}_$num"];
+      if (showObj != null) {
+        showObj.position = Offset(startX + _hsDigitGapX * d, _hsDigitY);
+      }
+      for (int n = 0; n <= 9; n++) {
+        if (n == num) continue;
+        final hideObj = world.objects["ハイスコア数字_${d}_$n"];
+        if (hideObj != null) {
+          hideObj.position = const Offset(-10000, -10000);
+        }
+      }
+    }
+
+    // 使わない桁を隠す
+    for (int d = showCount; d < 8; d++) {
+      for (int n = 0; n <= 9; n++) {
+        final hideObj = world.objects["ハイスコア数字_${d}_$n"];
+        if (hideObj != null) {
+          hideObj.position = const Offset(-10000, -10000);
+        }
+      }
+    }
+
+    _prevHighScore = highScore;
+  }
+
   // ==============================
   // ポイントを追加するメソッド
   // ==============================
   void addPoint(int value) {
     point += value;
+  }
+
+
+
+  // ==============================
+  // 🏅 ゲームオーバー時に呼ぶ
+  // 最高記録を更新して保存する
+  // ==============================
+  void checkAndSaveHighScore() {
+    if (point > highScore) {
+      highScore = point;
+      saveHighScore(); // 非同期で保存（fire-and-forget）
+      _renderHighScore();
+    }
   }
 }
 
@@ -4847,7 +5043,9 @@ class GameoverJudgmentPlayer extends SuperPlayer {
       // ==========================================================
       ObjectManager.playSound("ダメージ音"); // 🔊 追加
 
-
+      // 🏅 ハイスコアチェック＆保存
+      world.pointPlayer.checkAndSaveHighScore();
+      
       // runningリストをすべて削除。
       ObjectManager.clearAllRunningTasks();
     }
@@ -5665,26 +5863,23 @@ extension WorldObjectRenderExt on WorldObject {
     }
 
     // ImageObject
-    if (this is ImageObject) {
-      final o = this as ImageObject;
+  if (this is ImageObject) {
+    final o = this as ImageObject;
 
-      final isDebug = (this is DebugColliderImageObject);
-
-      return Positioned(
-        left: ctx.toScreenLeft(o.position.dx - o.width / 2),
-        top:  ctx.toScreenTop (o.position.dy - o.height / 2),
-        child: Transform.rotate(
-          angle: o.rotation,
-          child: Image.asset(
-            o.assetPath,
-            width: o.width,
-            height: o.height,
-            // ✅ デバッグコライダーだけ、必ず枠いっぱいに引き伸ばす
-            fit: isDebug ? BoxFit.fill : null,
-          ),
+    return Positioned(
+      left: ctx.toScreenLeft(o.position.dx - o.width / 2),
+      top:  ctx.toScreenTop (o.position.dy - o.height / 2),
+      child: Transform.rotate(
+        angle: o.rotation,
+        child: Image.asset(
+          o.assetPath,
+          width: o.width,
+          height: o.height,
+          fit: o.forceFit ? BoxFit.fill : null,
         ),
-      );
-    }
+      ),
+    );
+  }
 
     // GifObject
     if (this is GifObject) {
@@ -5798,7 +5993,7 @@ class ScreenshotSharePlayer extends SuperPlayer {
       // ⑤ 共有ダイアログ起動
       await Share.shareXFiles(
         [XFile(filePath)],
-        text: '🐾「アノアノ！」でスコア ${world.pointPlayer.point}点 獲得！ #アノアノ！ #ゆめからさめてない！じゃん！ #大臣プロジェクト！ @Masarina002',
+        text: '🐾「アノアノ！」で\n🐾スコア 【${world.pointPlayer.point}AnoAno！】を獲得！\n#アノアノ！ #ゆめからさめてない！じゃん！ #大臣プロジェクト！ @Masarina002',
       );
 
     } catch (e) {
@@ -5886,6 +6081,7 @@ class WorldRenderer {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await MobileAds.instance.initialize();
+  await ObjectManager.preloadAllSounds(); // ← 追加
   runApp(
     const MaterialApp(
       home: MyApp(),
