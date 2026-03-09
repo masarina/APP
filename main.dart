@@ -2866,7 +2866,7 @@ class HomePlayer extends SuperPlayer {
         _githubButtonConsumed = true;      // 🆕 消費済みにする
         ObjectManager.playSound("ボタン");
 
-        final uri = Uri.parse("...");
+        final uri = Uri.parse("https://github.com/masarina/APP/blob/main/main.dart");
         launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     }
@@ -3949,13 +3949,14 @@ class GameJumpAnimationPlayer extends SuperPlayer {
             (0.3, world.objects["アノアノ輪郭"]!, true),
           );
 
+          // 空中ジャンプだった
           this.continuous_jump_count += 1;
-          this.continuous_jump_max_num -= 1;
+          this.continuous_jump_max_num -= 1;  // ← これが原因
 
           if (this.continuous_jump_max_num < 1) {
-            // debugPrint("マイナス補正を実行しました");
             this.continuous_jump_max_num = 1;
           }
+
         } else {
           // 地上から → 「一回目のジャンプ」として強制カウント。
           this.continuous_jump_count = 1;
