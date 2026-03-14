@@ -3646,7 +3646,7 @@ class MovingDisturverPlayer extends SuperPlayer {
         ), 0, ObjectManager.toRandomizePositionByCorners],
 
         [world.objects["障害物出発地点_3"],
-        (230, -100, 900, -50, null, 0,
+        (230, -100, 900, -100, null, 0,
           <WorldObject>[
             world.objects["障害物出発地点"]!,
             world.objects["障害物出発地点_1"]!,
@@ -3721,6 +3721,36 @@ class MovingDisturverPlayer extends SuperPlayer {
   @override
   void mainScript() 
   {
+
+    // ==============================
+    // 🚀 スピード動的調整
+    // ==============================
+    final point = world.pointPlayer.point;
+    if (point >= 3000) 
+    {
+      disturver_speed = 230; // お好みで
+    }
+    else if (point >= 6000) 
+    {
+      disturver_speed = 240; // お好みで
+    }
+    else if (point >= 9000) 
+    {
+      disturver_speed = 250; // お好みで
+    }
+    else if (point >= 10000) 
+    {
+      disturver_speed = 270; // お好みで
+    }
+    else if (point >= 15000) 
+    {
+      disturver_speed = 300; // お好みで
+    }
+    else 
+    {
+      disturver_speed = 220; // 元の速度
+    }
+
     // 🐾 デバッグ用ログ：このPlayerが毎フレーム呼ばれてるか確認できる
     // debugPrint("▶ ${runtimeType} mainScript スタート");
 
@@ -5168,7 +5198,7 @@ class GameOverDisplayPlayer extends SuperPlayer {
         
         // スクショ共有ボタン
         [[world.objects["スクショ共有ボタン"],
-          (center_down.dx, center_down.dy + 300), 0,
+          (center_down.dx, center_down.dy + 270), 0,
           ObjectManager.toSetPosition]],
           
         // 表情追従全解除
@@ -5230,6 +5260,7 @@ class GameOverInputPlayer extends SuperPlayer {
 
   @override
   void mainScript() {
+    
 
     final mouikkai_button       = world.objects["もう一回やる？ボタン"];
     final sukusyo_button = world.objects["スクショ共有ボタン"]!;
@@ -6159,6 +6190,5 @@ void main() async {
 // 今後、init_schedule や game_schedule などを複数用意し、
 // 状況に応じて切り替える設計を想定している。
 //
-
 
 
